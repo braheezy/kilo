@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
-	"unicode"
 
 	"golang.org/x/sys/unix"
 )
@@ -60,7 +58,7 @@ func enableRawMode() {
 	// VMIN: Minimum number of characters for noncanonical read
 	// VTIME: Timeout in deciseconds for noncanonical read
 	raw.Cc[unix.VMIN] = 0
-	raw.Cc[unix.VTIME] = 1
+	raw.Cc[unix.VTIME] = 10
 
 	unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, &raw)
 }
@@ -72,6 +70,39 @@ func disableRawMode() {
 	}
 }
 
+// editorReadKey waits for and returns a single keypress from the terminal.
+func editorReadKey() (char rune) {
+	var err error
+	// Point a Reader at STDIN
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		// Read a single character
+		char, _, err = reader.ReadRune()
+		if err != nil && err != io.EOF {
+			panic("Failed to read character" + err.Error())
+		}
+		if char != '\u0000' {
+			return char
+		}
+	}
+}
+
+// ==========================================
+// ================ Input ===================
+// ==========================================
+func editorProcessKeypress() bool {
+	char := editorReadKey()
+
+	switch char {
+	case CTRL_KEY('q'):
+		// Quit
+		return false
+	}
+
+	return true
+}
+
 // ==========================================
 // ================= Init ===================
 // ==========================================
@@ -80,30 +111,9 @@ func main() {
 	enableRawMode()
 	defer disableRawMode()
 
-	// Point a Reader at STDIN
-	reader := bufio.NewReader(os.Stdin)
-
-	char := '\u0000'
-	var err error
-
 	for {
-		// Read a single character
-		char, _, err = reader.ReadRune()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			panic("Failed to read character" + err.Error())
-		}
-
-		if char == CTRL_KEY('q') {
+		if !editorProcessKeypress() {
 			break
-		}
-
-		if unicode.IsControl(char) {
-			fmt.Printf("%d\r\n", char)
-		} else {
-			fmt.Printf("%d ('%c')\r\n", char, char)
 		}
 	}
 }
