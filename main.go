@@ -96,7 +96,7 @@ func main() {
 			panic("Failed to read character" + err.Error())
 		}
 
-		if char == 'q' {
+		if char == CTRL_KEY('q') {
 			break
 		}
 
