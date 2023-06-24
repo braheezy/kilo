@@ -76,7 +76,7 @@ func enableRawMode() {
 	// VMIN: Minimum number of characters for noncanonical read
 	// VTIME: Timeout in deciseconds for noncanonical read
 	raw.Cc[unix.VMIN] = 0
-	raw.Cc[unix.VTIME] = 10
+	raw.Cc[unix.VTIME] = 1
 
 	unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, &raw)
 }
@@ -161,13 +161,12 @@ func editorProcessKeypress() bool {
 // ==========================================
 // ================= Main ===================
 // ==========================================
-func init() {
-	enableRawMode()
-	config.screenrows, config.screencols = getWindowSize()
-}
-
 func main() {
+	// TODO: If this stuff is in an init() function, things don't work. Why not?
+	enableRawMode()
+	defer exit()
 	defer disableRawMode()
+	config.screenrows, config.screencols = getWindowSize()
 
 	for {
 		editorRefreshScreen()
