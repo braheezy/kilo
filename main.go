@@ -23,6 +23,8 @@ const (
 	ARROW_RIGHT
 	ARROW_UP
 	ARROW_DOWN
+	PAGE_UP
+	PAGE_DOWN
 )
 
 // CTRL_KEY is a mask for the control keys,
@@ -128,7 +130,8 @@ func editorReadKey() (key int) {
 			break
 		}
 	}
-	// Handle <esc>-ed sequences "keys"
+
+	// Handle <esc>-ed sequence "keys"
 	if char == '\x1b' {
 		var seq [3]rune
 
@@ -143,22 +146,39 @@ func editorReadKey() (key int) {
 		}
 
 		if seq[0] == '[' {
-			switch seq[1] {
-			case 'A':
-				return ARROW_UP
-			case 'B':
-				return ARROW_DOWN
-			case 'C':
-				return ARROW_RIGHT
-			case 'D':
-				return ARROW_LEFT
+			// Handle escape sequences like <esc>[4
+			if seq[1] >= '0' && seq[1] <= '9' {
+				seq[2], _, err = reader.ReadRune()
+				if err != nil {
+					// We don't recognize this sequence, return <esc>
+					return '\x1b'
+				}
+				// Handle escape sequences like <esc>[5~
+				if seq[2] == '~' {
+					switch seq[1] {
+					case '5':
+						return PAGE_UP
+					case '6':
+						return PAGE_DOWN
+					}
+				}
+			} else {
+				// Handle escape sequences like <esc>[A
+				switch seq[1] {
+				case 'A':
+					return ARROW_UP
+				case 'B':
+					return ARROW_DOWN
+				case 'C':
+					return ARROW_RIGHT
+				case 'D':
+					return ARROW_LEFT
+				}
 			}
 		}
-
 		// We don't recognize this sequence, return <esc>
 		return '\x1b'
 	} else {
-
 		return int(char)
 	}
 }
@@ -320,6 +340,17 @@ func editorProcessKeypress() bool {
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
+	case PAGE_UP:
+		fallthrough
+	case PAGE_DOWN:
+		times := config.screenrows
+		for ; 0 < times; times-- {
+			if char == PAGE_UP {
+				editorMoveCursor(ARROW_UP)
+			} else {
+				editorMoveCursor(ARROW_DOWN)
+			}
+		}
 	case ARROW_UP:
 		fallthrough
 	case ARROW_LEFT:
