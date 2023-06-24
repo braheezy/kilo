@@ -18,10 +18,17 @@ import (
 
 const KILO_VERSION = "0.0.1"
 
+const (
+	ARROW_LEFT = 1000 + iota
+	ARROW_RIGHT
+	ARROW_UP
+	ARROW_DOWN
+)
+
 // CTRL_KEY is a mask for the control keys,
 // stripping bits 5 and 6 from the character code, k.
-func CTRL_KEY(k rune) rune {
-	return k & 0x1f
+func CTRL_KEY(k rune) int {
+	return int(k) & 0x1f
 }
 
 // Find the minimum of two values.
@@ -105,8 +112,9 @@ func disableRawMode() {
 }
 
 // editorReadKey waits for and returns a single keypress from the terminal.
-func editorReadKey() (char rune) {
+func editorReadKey() (key int) {
 	var err error
+	var char rune
 	// Point a Reader at STDIN
 	reader := bufio.NewReader(os.Stdin)
 
@@ -117,8 +125,41 @@ func editorReadKey() (char rune) {
 			panic("Failed to read character from terminal: " + err.Error())
 		}
 		if char != '\u0000' {
-			return char
+			break
 		}
+	}
+	// Handle <esc>-ed sequences "keys"
+	if char == '\x1b' {
+		var seq [3]rune
+
+		// Read the next 2 bytes. If these fail, they probably typed <esc>
+		seq[0], _, err = reader.ReadRune()
+		if err != nil {
+			return '\x1b'
+		}
+		seq[1], _, err = reader.ReadRune()
+		if err != nil {
+			return '\x1b'
+		}
+
+		if seq[0] == '[' {
+			switch seq[1] {
+			case 'A':
+				return ARROW_UP
+			case 'B':
+				return ARROW_DOWN
+			case 'C':
+				return ARROW_RIGHT
+			case 'D':
+				return ARROW_LEFT
+			}
+		}
+
+		// We don't recognize this sequence, return <esc>
+		return '\x1b'
+	} else {
+
+		return int(char)
 	}
 }
 
@@ -249,15 +290,15 @@ func editorDrawRows(buf *strings.Builder) {
 // ================ Input ===================
 // ==========================================
 
-func editorMoveCursor(key rune) {
+func editorMoveCursor(key int) {
 	switch key {
-	case 'w':
+	case ARROW_UP:
 		config.cy--
-	case 'a':
+	case ARROW_LEFT:
 		config.cx--
-	case 's':
+	case ARROW_DOWN:
 		config.cy++
-	case 'd':
+	case ARROW_RIGHT:
 		config.cx++
 	}
 }
@@ -271,13 +312,13 @@ func editorProcessKeypress() bool {
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
-	case 'w':
+	case ARROW_UP:
 		fallthrough
-	case 'a':
+	case ARROW_LEFT:
 		fallthrough
-	case 's':
+	case ARROW_DOWN:
 		fallthrough
-	case 'd':
+	case ARROW_RIGHT:
 		editorMoveCursor(char)
 	}
 
