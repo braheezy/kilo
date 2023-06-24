@@ -23,6 +23,8 @@ const (
 	ARROW_RIGHT
 	ARROW_UP
 	ARROW_DOWN
+	HOME_KEY
+	END_KEY
 	PAGE_UP
 	PAGE_DOWN
 )
@@ -156,10 +158,18 @@ func editorReadKey() (key int) {
 				// Handle escape sequences like <esc>[5~
 				if seq[2] == '~' {
 					switch seq[1] {
+					case '1':
+						return HOME_KEY
+					case '4':
+						return END_KEY
 					case '5':
 						return PAGE_UP
 					case '6':
 						return PAGE_DOWN
+					case '7':
+						return HOME_KEY
+					case '8':
+						return END_KEY
 					}
 				}
 			} else {
@@ -173,7 +183,19 @@ func editorReadKey() (key int) {
 					return ARROW_RIGHT
 				case 'D':
 					return ARROW_LEFT
+				case 'H':
+					return HOME_KEY
+				case 'F':
+					return END_KEY
 				}
+			}
+		} else if seq[0] == 'O' {
+			// Handle escape sequences like <esc>OH
+			switch seq[1] {
+			case 'H':
+				return HOME_KEY
+			case 'F':
+				return END_KEY
 			}
 		}
 		// We don't recognize this sequence, return <esc>
@@ -340,6 +362,12 @@ func editorProcessKeypress() bool {
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
+
+	case HOME_KEY:
+		config.cx = 0
+	case END_KEY:
+		config.cx = config.screencols - 1
+
 	case PAGE_UP:
 		fallthrough
 	case PAGE_DOWN:
@@ -351,6 +379,7 @@ func editorProcessKeypress() bool {
 				editorMoveCursor(ARROW_DOWN)
 			}
 		}
+
 	case ARROW_UP:
 		fallthrough
 	case ARROW_LEFT:
