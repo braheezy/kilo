@@ -39,11 +39,15 @@ func MIN(a, b int) int {
 // Maintain state of the editor.
 type editorConfig struct {
 	originalTermios *unix.Termios
-	screenrows      int
-	screencols      int
+	// terminal size
+	screenrows, screencols int
+	// cursor position
+	cx, cy int
 }
 
 var config editorConfig
+
+var mainBuffer strings.Builder
 
 // ==========================================
 // =============== Terminal =================
@@ -179,14 +183,10 @@ func getWindowSize() (row int, col int) {
 }
 
 // ==========================================
-// ================ Buffer ==================
-// ==========================================
-
-var mainBuffer strings.Builder
-
-// ==========================================
 // ================ Output ==================
 // ==========================================
+
+// editorRefreshScreen is called every cycle to repaint the screen.
 func editorRefreshScreen() {
 	// Hide the cursor before painting screen
 	mainBuffer.WriteString("\x1b[?25l")
@@ -195,8 +195,9 @@ func editorRefreshScreen() {
 
 	editorDrawRows(&mainBuffer)
 
-	// Reposition cursor to top left
-	mainBuffer.WriteString("\x1b[H")
+	// Draw cursor
+	// +1 to put the cursor into terminal coordinates.
+	fmt.Fprintf(&mainBuffer, "\x1b[%d;%dH", config.cy+1, config.cx+1)
 	// Bring the cursor back
 	mainBuffer.WriteString("\x1b[?25h")
 
@@ -247,6 +248,20 @@ func editorDrawRows(buf *strings.Builder) {
 // ==========================================
 // ================ Input ===================
 // ==========================================
+
+func editorMoveCursor(key rune) {
+	switch key {
+	case 'w':
+		config.cy--
+	case 'a':
+		config.cx--
+	case 's':
+		config.cy++
+	case 'd':
+		config.cx++
+	}
+}
+
 func editorProcessKeypress() bool {
 	char := editorReadKey()
 
@@ -256,6 +271,14 @@ func editorProcessKeypress() bool {
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
+	case 'w':
+		fallthrough
+	case 'a':
+		fallthrough
+	case 's':
+		fallthrough
+	case 'd':
+		editorMoveCursor(char)
 	}
 
 	return true
@@ -264,12 +287,15 @@ func editorProcessKeypress() bool {
 // ==========================================
 // ================= Main ===================
 // ==========================================
+func initializeEditor() {
+	config.screenrows, config.screencols = getWindowSize()
+	config.cx, config.cy = 0, 0
+}
 func main() {
-	// TODO: If this stuff is in an init() function, things don't work. Why not?
 	enableRawMode()
 	defer exit()
 	defer disableRawMode()
-	config.screenrows, config.screencols = getWindowSize()
+	initializeEditor()
 
 	for {
 		editorRefreshScreen()
