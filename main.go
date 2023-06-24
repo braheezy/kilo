@@ -293,13 +293,21 @@ func editorDrawRows(buf *strings.Builder) {
 func editorMoveCursor(key int) {
 	switch key {
 	case ARROW_UP:
-		config.cy--
+		if config.cy != 0 {
+			config.cy--
+		}
 	case ARROW_LEFT:
-		config.cx--
+		if config.cx != 0 {
+			config.cx--
+		}
 	case ARROW_DOWN:
-		config.cy++
+		if config.cy != config.screenrows-1 {
+			config.cy++
+		}
 	case ARROW_RIGHT:
-		config.cx++
+		if config.cx != config.screencols-1 {
+			config.cx++
+		}
 	}
 }
 
