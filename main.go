@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -23,6 +25,7 @@ func CTRL_KEY(k rune) rune {
 // ================= Data ===================
 // ==========================================
 
+// Maintain state of the editor.
 type editorConfig struct {
 	originalTermios *unix.Termios
 	screenrows      int
@@ -39,7 +42,7 @@ var config editorConfig
 func exit() {
 	if r := recover(); r != nil {
 		cleanScreen()
-		log.Fatalf("%v\r\n", r)
+		log.Fatalf("%+v. Quitting kilo...\r\n", r)
 	}
 }
 
@@ -52,7 +55,7 @@ func enableRawMode() {
 	var err error
 	config.originalTermios, err = unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS)
 	if err != nil {
-		panic("Failed to get terminal settings: " + err.Error())
+		panic("Failed to obtain terminal settings: " + err.Error())
 	}
 	raw := *config.originalTermios
 	// IXON: disable flow control
@@ -91,13 +94,11 @@ func editorReadKey() (char rune) {
 	// Point a Reader at STDIN
 	reader := bufio.NewReader(os.Stdin)
 
-	defer exit()
-
 	for {
 		// Read a single character
 		char, _, err = reader.ReadRune()
 		if err != nil && err != io.EOF {
-			panic("Failed to read character" + err.Error())
+			panic("Failed to read character from terminal: " + err.Error())
 		}
 		if char != '\u0000' {
 			return char
@@ -122,21 +123,22 @@ func getWindowSize() (row int, col int) {
 // https://vt100.net/docs/vt100-ug/chapter3.html#ED
 func cleanScreen() {
 	// Wipe screen
-	print("\x1b[2J")
+	fmt.Print("\x1b[2J")
 	// Reposition cursor to top left
-	print("\x1b[H")
+	fmt.Print("\x1b[H")
 }
 
 func editorRefreshScreen() {
 	cleanScreen()
 
 	editorDrawRows()
-	print("\x1b[H") // Reposition cursor to top left
+	fmt.Print("\x1b[H") // Reposition cursor to top left
 }
 
+// editorDrawRows draws the tilde column
 func editorDrawRows() {
 	for y := 0; y < config.screenrows; y++ {
-		print("~\r\n")
+		fmt.Print("~\r\n")
 	}
 }
 
