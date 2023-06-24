@@ -189,7 +189,11 @@ func editorRefreshScreen() {
 // editorDrawRows draws the tilde column
 func editorDrawRows() {
 	for y := 0; y < config.screenrows; y++ {
-		fmt.Print("~\r\n")
+		fmt.Print("~")
+
+		if y < config.screenrows-1 {
+			fmt.Print("\r\n")
+		}
 	}
 }
 
