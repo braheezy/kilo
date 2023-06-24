@@ -178,10 +178,16 @@ var mainBuffer strings.Builder
 // ================ Output ==================
 // ==========================================
 func editorRefreshScreen() {
+	// Hide the cursor before painting screen
+	mainBuffer.WriteString("\x1b[?25l")
 	cleanScreen(&mainBuffer)
+
 	editorDrawRows(&mainBuffer)
+
 	// Reposition cursor to top left
 	mainBuffer.WriteString("\x1b[H")
+	// Bring the cursor back
+	mainBuffer.WriteString("\x1b[?25h")
 
 	fmt.Print(mainBuffer.String())
 	mainBuffer.Reset()
