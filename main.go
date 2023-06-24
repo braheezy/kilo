@@ -23,7 +23,11 @@ func CTRL_KEY(k rune) rune {
 // ================= Data ===================
 // ==========================================
 
-var originalTermios *unix.Termios
+type editorConfig struct {
+	originalTermios *unix.Termios
+}
+
+var config editorConfig
 
 // ==========================================
 // =============== Terminal =================
@@ -44,11 +48,11 @@ func exit() {
 // instead of buffering it and sending it when Enter is pressed.
 func enableRawMode() {
 	var err error
-	originalTermios, err = unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS)
+	config.originalTermios, err = unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS)
 	if err != nil {
 		panic("Failed to get terminal settings: " + err.Error())
 	}
-	raw := *originalTermios
+	raw := *config.originalTermios
 	// IXON: disable flow control
 	// ICRNL: disable CR to NL conversion
 	// BRKINT: disable break conditions from causing SIGINT
@@ -74,7 +78,7 @@ func enableRawMode() {
 
 // disableRawMode restores the terminal to its previous settings.
 func disableRawMode() {
-	if err := unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, originalTermios); err != nil {
+	if err := unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, config.originalTermios); err != nil {
 		panic("Failed to restore terminal settings: " + err.Error())
 	}
 }
