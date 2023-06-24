@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -41,7 +42,8 @@ var config editorConfig
 // Thin wrapper around panic to gracefully exit.
 func exit() {
 	if r := recover(); r != nil {
-		cleanScreen()
+		cleanScreen(&mainBuffer)
+		fmt.Print(mainBuffer.String())
 		log.Fatalf("%+v. Quitting kilo...\r\n", r)
 	}
 }
@@ -167,32 +169,40 @@ func getWindowSize() (row int, col int) {
 }
 
 // ==========================================
+// ================ Buffer ==================
+// ==========================================
+
+var mainBuffer strings.Builder
+
+// ==========================================
 // ================ Output ==================
 // ==========================================
+func editorRefreshScreen() {
+	cleanScreen(&mainBuffer)
+	editorDrawRows(&mainBuffer)
+	// Reposition cursor to top left
+	mainBuffer.WriteString("\x1b[H")
+
+	fmt.Print(mainBuffer.String())
+	mainBuffer.Reset()
+}
 
 // Clear the entire screen
 // https://vt100.net/docs/vt100-ug/chapter3.html#ED
-func cleanScreen() {
+func cleanScreen(buf *strings.Builder) {
 	// Wipe screen
-	fmt.Print("\x1b[2J")
+	buf.WriteString("\x1b[2J")
 	// Reposition cursor to top left
-	fmt.Print("\x1b[H")
-}
-
-func editorRefreshScreen() {
-	cleanScreen()
-
-	editorDrawRows()
-	fmt.Print("\x1b[H") // Reposition cursor to top left
+	buf.WriteString("\x1b[H")
 }
 
 // editorDrawRows draws the tilde column
-func editorDrawRows() {
+func editorDrawRows(buf *strings.Builder) {
 	for y := 0; y < config.screenrows; y++ {
-		fmt.Print("~")
+		buf.WriteString("~")
 
 		if y < config.screenrows-1 {
-			fmt.Print("\r\n")
+			buf.WriteString("\r\n")
 		}
 	}
 }
@@ -206,7 +216,8 @@ func editorProcessKeypress() bool {
 	switch char {
 	case CTRL_KEY('q'):
 		// Quit
-		cleanScreen()
+		cleanScreen(&mainBuffer)
+		fmt.Print(mainBuffer.String())
 		return false
 	}
 
