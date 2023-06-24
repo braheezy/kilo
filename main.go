@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"io"
+	"log"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -27,6 +28,14 @@ var originalTermios *unix.Termios
 // ==========================================
 // =============== Terminal =================
 // ==========================================
+
+// Thin wrapper around panic to gracefully exit.
+func exit() {
+	if r := recover(); r != nil {
+		cleanScreen()
+		log.Fatalln(r)
+	}
+}
 
 // enableRawMode turns on raw mode for the terminal. It remembers the settings of the terminal
 // before the change so it can restore it later.
@@ -76,6 +85,8 @@ func editorReadKey() (char rune) {
 	// Point a Reader at STDIN
 	reader := bufio.NewReader(os.Stdin)
 
+	defer exit()
+
 	for {
 		// Read a single character
 		char, _, err = reader.ReadRune()
@@ -89,6 +100,23 @@ func editorReadKey() (char rune) {
 }
 
 // ==========================================
+// ================ Output ==================
+// ==========================================
+
+// Clear the entire screen
+// https://vt100.net/docs/vt100-ug/chapter3.html#ED
+func cleanScreen() {
+	// Wipe screen
+	print("\x1b[2J")
+	// Reposition cursor to top left
+	print("\x1b[H")
+}
+
+func editorRefreshScreen() {
+	cleanScreen()
+}
+
+// ==========================================
 // ================ Input ===================
 // ==========================================
 func editorProcessKeypress() bool {
@@ -97,6 +125,7 @@ func editorProcessKeypress() bool {
 	switch char {
 	case CTRL_KEY('q'):
 		// Quit
+		cleanScreen()
 		return false
 	}
 
@@ -112,6 +141,7 @@ func main() {
 	defer disableRawMode()
 
 	for {
+		editorRefreshScreen()
 		if !editorProcessKeypress() {
 			break
 		}
