@@ -106,13 +106,64 @@ func editorReadKey() (char rune) {
 	}
 }
 
-func getWindowSize() (row int, col int) {
-	winSize, err := unix.IoctlGetWinsize(int(os.Stdin.Fd()), unix.TIOCGWINSZ)
-	if err != nil {
-		panic("Failed to get window size: " + err.Error())
+// getCursorPosition leverages low-level terminal requests to obtain the cursor position.
+func getCursorPosition() (row int, col int, err error) {
+	var buf [32]rune
+
+	// Request cursor position
+	fmt.Print("\x1b[6n\r\n")
+
+	// Then read the response back from STDIN
+	reader := bufio.NewReader(os.Stdin)
+	for i := 0; i < len(buf); i++ {
+		char, _, err := reader.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic("Failed to read character from terminal: " + err.Error())
+		}
+
+		buf[i] = char
+
+		if buf[i] == 'R' {
+			break
+		}
 	}
 
-	return int(winSize.Row), int(winSize.Col)
+	// We should have a response like:
+	//     <esc>[24;80
+	// where <esc> is \x1b
+	// 24 is the row and 80 is the column
+	if buf[0] != '\x1b' || buf[1] != '[' {
+		return 0, 0, errors.New("improper cursor position response")
+	}
+
+	// Parse the size
+	_, err = fmt.Sscanf(string(buf[2:len(buf)-2]), "%d;%d", &row, &col)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return row, col, nil
+}
+
+// getWindowSize uses low-level terminal requests to obtain the window size.
+func getWindowSize() (row int, col int) {
+	winSize, err := unix.IoctlGetWinsize(int(os.Stdin.Fd()), unix.TIOCGWINSZ)
+	if err != nil || winSize.Col == 0 {
+		// As a fallback, shove the cursor in the bottom-right corner and record the cursor position.
+		fmt.Print("\x1b[999C\x1b[999B")
+		row, col, err = getCursorPosition()
+		if err != nil {
+			panic("Failed to obtain cursor position: " + err.Error())
+		}
+	} else {
+		row = int(winSize.Row)
+		col = int(winSize.Col)
+	}
+
+	return row, col
 }
 
 // ==========================================
