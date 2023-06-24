@@ -25,6 +25,8 @@ func CTRL_KEY(k rune) rune {
 
 type editorConfig struct {
 	originalTermios *unix.Termios
+	screenrows      int
+	screencols      int
 }
 
 var config editorConfig
@@ -103,6 +105,15 @@ func editorReadKey() (char rune) {
 	}
 }
 
+func getWindowSize() (row int, col int) {
+	winSize, err := unix.IoctlGetWinsize(int(os.Stdin.Fd()), unix.TIOCGWINSZ)
+	if err != nil {
+		panic("Failed to get window size: " + err.Error())
+	}
+
+	return int(winSize.Row), int(winSize.Col)
+}
+
 // ==========================================
 // ================ Output ==================
 // ==========================================
@@ -148,10 +159,15 @@ func editorProcessKeypress() bool {
 // ==========================================
 // ================= Init ===================
 // ==========================================
+func initEditor() {
+	config.screenrows, config.screencols = getWindowSize()
+}
 
 func main() {
 	enableRawMode()
 	defer disableRawMode()
+
+	initEditor()
 
 	for {
 		editorRefreshScreen()
