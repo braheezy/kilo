@@ -180,7 +180,8 @@ var mainBuffer strings.Builder
 func editorRefreshScreen() {
 	// Hide the cursor before painting screen
 	mainBuffer.WriteString("\x1b[?25l")
-	cleanScreen(&mainBuffer)
+	// Reposition cursor to top left
+	mainBuffer.WriteString("\x1b[H")
 
 	editorDrawRows(&mainBuffer)
 
@@ -206,6 +207,10 @@ func cleanScreen(buf *strings.Builder) {
 func editorDrawRows(buf *strings.Builder) {
 	for y := 0; y < config.screenrows; y++ {
 		buf.WriteString("~")
+
+		// Delete the rest of the line. This effectively clears
+		// the screen when this function runs the first time.
+		buf.WriteString("\x1b[K")
 
 		if y < config.screenrows-1 {
 			buf.WriteString("\r\n")
