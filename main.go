@@ -16,10 +16,20 @@ import (
 // =============== Defines* =================
 // ==========================================
 
+const KILO_VERSION = "0.0.1"
+
 // CTRL_KEY is a mask for the control keys,
 // stripping bits 5 and 6 from the character code, k.
 func CTRL_KEY(k rune) rune {
 	return k & 0x1f
+}
+
+// Find the minimum of two values.
+func MIN(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ==========================================
@@ -206,7 +216,23 @@ func cleanScreen(buf *strings.Builder) {
 // editorDrawRows draws the tilde column
 func editorDrawRows(buf *strings.Builder) {
 	for y := 0; y < config.screenrows; y++ {
-		buf.WriteString("~")
+		if y == config.screenrows/3 {
+			welcomeMsg := fmt.Sprintf("Kilo editor -- version %s", KILO_VERSION)
+			welcomeLen := MIN(len(welcomeMsg), config.screencols)
+			// Center the welcome message
+			padding := (config.screencols - welcomeLen) / 2
+			if padding > 0 {
+				buf.WriteString("~")
+				padding--
+			}
+			for ; padding > 0; padding-- {
+				buf.WriteRune(' ')
+			}
+			// Truncate the welcome message to the screen width.
+			buf.WriteString(welcomeMsg[0:welcomeLen])
+		} else {
+			buf.WriteString("~")
+		}
 
 		// Delete the rest of the line. This effectively clears
 		// the screen when this function runs the first time.
