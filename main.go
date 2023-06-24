@@ -157,17 +157,15 @@ func editorProcessKeypress() bool {
 }
 
 // ==========================================
-// ================= Init ===================
+// ================= Main ===================
 // ==========================================
-func initEditor() {
+func init() {
+	enableRawMode()
 	config.screenrows, config.screencols = getWindowSize()
 }
 
 func main() {
-	enableRawMode()
 	defer disableRawMode()
-
-	initEditor()
 
 	for {
 		editorRefreshScreen()
