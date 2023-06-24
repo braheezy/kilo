@@ -33,7 +33,7 @@ var originalTermios *unix.Termios
 func exit() {
 	if r := recover(); r != nil {
 		cleanScreen()
-		log.Fatalln(r)
+		log.Fatalf("%v\r\n", r)
 	}
 }
 
@@ -114,6 +114,15 @@ func cleanScreen() {
 
 func editorRefreshScreen() {
 	cleanScreen()
+
+	editorDrawRows()
+	print("\x1b[H") // Reposition cursor to top left
+}
+
+func editorDrawRows() {
+	for y := 0; y < 24; y++ {
+		print("~\r\n")
+	}
 }
 
 // ==========================================
