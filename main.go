@@ -398,6 +398,16 @@ func editorInsertChar(char rune) {
 // =============== File I/O =================
 // ==========================================
 
+// Convert editor rows to one string.
+func editorRowsToString(rows *[]editorRow) string {
+	var result strings.Builder
+	for _, row := range *rows {
+		result.WriteString(row.content + "\n")
+	}
+
+	return result.String()
+}
+
 func editorOpen(filename string) {
 	config.filename = filename
 	// Open file for reading
@@ -412,6 +422,29 @@ func editorOpen(filename string) {
 	for scanner.Scan() {
 		editorAppendRow(scanner.Text())
 	}
+}
+
+func editorSave() {
+	if len(config.filename) == 0 {
+		// No file to save to
+		return
+	}
+
+	editorString := editorRowsToString(&config.rows)
+	file, err := os.Create(config.filename)
+	if err != nil {
+		panic("Failed to create " + config.filename + " file: " + err.Error())
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(editorString)
+
+	if err != nil {
+		editorSetStatusMessage("Can't save! I/O error: %s", err.Error())
+	} else {
+		editorSetStatusMessage("%d bytes written to disk", len(editorString))
+	}
+
 }
 
 // ==========================================
@@ -658,11 +691,17 @@ func editorProcessKeypress() bool {
 	char := editorReadKey()
 
 	switch char {
+	case '\r':
+		// TODO
+		break
 	case CTRL_KEY('q'):
 		// Quit
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
+
+	case CTRL_KEY('s'):
+		editorSave()
 
 	case HOME_KEY:
 		// Move the cursor to the beginning of the current row
