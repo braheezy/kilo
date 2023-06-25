@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
 )
 
@@ -368,6 +369,30 @@ func editorAppendRow(row string) {
 	config.numrows++
 }
 
+// Insert a single character into row at the given index.
+func editorRowInsertChar(row *editorRow, at int, char rune) {
+	// Only allow inserts in a valid location.
+	if at < 0 || at > row.Len() {
+		at = row.Len()
+	}
+	// Insert the character and re-render the row.
+	row.content = string(slices.Insert([]rune(row.content), at, char))
+	editorUpdateRow(row)
+}
+
+// ==========================================
+// ========== Editor Operations =============
+// ==========================================
+
+func editorInsertChar(char rune) {
+	if config.cy == config.numrows {
+		// Cursor on tilde lin after end of file, so we need a new row.
+		editorAppendRow("")
+	}
+	editorRowInsertChar(&config.rows[config.cy], config.cx, char)
+	config.cx++
+}
+
 // ==========================================
 // =============== File I/O =================
 // ==========================================
@@ -676,6 +701,9 @@ func editorProcessKeypress() bool {
 		fallthrough
 	case ARROW_RIGHT:
 		editorMoveCursor(char)
+
+	default:
+		editorInsertChar(rune(char))
 	}
 
 	return true
