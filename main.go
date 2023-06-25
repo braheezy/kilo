@@ -71,6 +71,8 @@ type editorConfig struct {
 	rx int
 	// The rows of text in the editor
 	rows []editorRow
+	// Whether or not the file has been modified since opening/saving
+	dirty bool
 	// The number of rows in the editor
 	numrows int
 	// Current row the user is scrolled to
@@ -368,6 +370,7 @@ func editorAppendRow(row string) {
 	config.rows = append(config.rows, editorRow{content: row})
 	editorUpdateRow(&config.rows[config.numrows])
 	config.numrows++
+	config.dirty = true
 }
 
 // Insert a single character into row at the given index.
@@ -379,6 +382,7 @@ func editorRowInsertChar(row *editorRow, at int, char rune) {
 	// Insert the character and re-render the row.
 	row.content = string(slices.Insert([]rune(row.content), at, char))
 	editorUpdateRow(row)
+	config.dirty = true
 }
 
 // ==========================================
@@ -422,6 +426,7 @@ func editorOpen(filename string) {
 	for scanner.Scan() {
 		editorAppendRow(scanner.Text())
 	}
+	config.dirty = false
 }
 
 func editorSave() {
@@ -442,6 +447,7 @@ func editorSave() {
 	if err != nil {
 		editorSetStatusMessage("Can't save! I/O error: %s", err.Error())
 	} else {
+		config.dirty = false
 		editorSetStatusMessage("%d bytes written to disk", len(editorString))
 	}
 
@@ -467,7 +473,11 @@ func editorDrawStatusBar(buf *strings.Builder) {
 	if len(config.filename) == 0 {
 		displayFilename = "[No Name]"
 	}
-	status := fmt.Sprintf("%.20s - %d lines", displayFilename, config.numrows)
+	dirtyStatus := ""
+	if config.dirty {
+		dirtyStatus = "(modified)"
+	}
+	status := fmt.Sprintf("%.20s - %d lines %s", displayFilename, config.numrows, dirtyStatus)
 	// Truncate if longer than screen width.
 	statusLen := MIN(len(status), config.screencols)
 	buf.WriteString(status[0:statusLen])
