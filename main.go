@@ -13,7 +13,7 @@ import (
 )
 
 // ==========================================
-// =============== Defines* =================
+// =============== Defines =================
 // ==========================================
 
 const KILO_VERSION = "0.0.1"
@@ -61,6 +61,8 @@ type editorConfig struct {
 	numrows int
 	// Current row the user is scrolled to
 	rowOffset int
+	// Current column the user is scrolled to
+	colOffset int
 }
 
 var config editorConfig
@@ -317,6 +319,16 @@ func editorScroll() {
 	if config.cy >= config.rowOffset+config.screenrows {
 		config.rowOffset = config.cy - config.screenrows + 1
 	}
+
+	// Check if cursor is to the left of visible window
+	if config.cx < config.colOffset {
+		config.colOffset = config.cx
+	}
+
+	// Check if cursor is to the right of visible window
+	if config.cx >= config.colOffset+config.screencols {
+		config.colOffset = config.cx - config.screencols + 1
+	}
 }
 
 // editorRefreshScreen is called every cycle to repaint the screen.
@@ -333,7 +345,7 @@ func editorRefreshScreen() {
 	// Draw cursor
 	// +1 to put the cursor into terminal coordinates.
 	// Account for scroll changing the screen position.
-	fmt.Fprintf(&mainBuffer, "\x1b[%d;%dH", (config.cy-config.rowOffset)+1, config.cx+1)
+	fmt.Fprintf(&mainBuffer, "\x1b[%d;%dH", (config.cy-config.rowOffset)+1, (config.cx-config.colOffset)+1)
 	// Bring the cursor back
 	mainBuffer.WriteString("\x1b[?25h")
 
@@ -377,11 +389,18 @@ func editorDrawRows(buf *strings.Builder) {
 			}
 		} else {
 			// Show the row contents
-			rowSize := len(config.row[fileRow])
+			rowSize := len(config.row[fileRow]) - config.colOffset
+			if rowSize < 0 {
+				rowSize = 0
+			}
 			if rowSize > config.screencols {
 				rowSize = config.screencols
 			}
-			buf.WriteString(config.row[fileRow][0:rowSize])
+
+			if rowSize > config.colOffset {
+				buf.WriteString(config.row[fileRow][config.colOffset:rowSize])
+			}
+
 		}
 
 		// Delete the rest of the line. This effectively clears
@@ -413,9 +432,7 @@ func editorMoveCursor(key int) {
 			config.cy++
 		}
 	case ARROW_RIGHT:
-		if config.cx != config.screencols-1 {
-			config.cx++
-		}
+		config.cx++
 	}
 }
 
@@ -468,6 +485,7 @@ func initializeEditor() {
 	config.numrows = 0
 	config.row = []string{}
 	config.rowOffset = 0
+	config.colOffset = 0
 }
 
 func main() {
