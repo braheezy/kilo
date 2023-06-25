@@ -322,8 +322,8 @@ func editorRowCxToRx(row *editorRow, cx int) int {
 	// Copy cx coordinates to rx, unless a tab is encountered.
 	// Then, increment rx by the tab's width.
 	rx := 0
-	for j := 0; j < cx; j++ {
-		if row.content[j] == '\t' {
+	for _, char := range row.content[:cx] {
+		if char == '\t' {
 			// '\t' already consumes 1 space, so TAB_STOP - 1 is the total amount of tabs
 			// Then, subtract off the amount of space already consumed in the TAB_STOP.
 			rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP)
@@ -337,8 +337,8 @@ func editorRowCxToRx(row *editorRow, cx int) int {
 func editorUpdateRow(row *editorRow) {
 	tabs := 0
 	// Count how many tabs are in the row.
-	for j := 0; j < len(row.content); j++ {
-		if row.content[j] == '\t' {
+	for _, char := range row.content {
+		if char == '\t' {
 			tabs++
 		}
 	}
@@ -347,15 +347,15 @@ func editorUpdateRow(row *editorRow) {
 	row.render = make([]byte, len(row.content)+(tabs*(KILO_TAB_STOP-1))+1)
 	idx := 0
 	// Copy content to render, replacing tabs with spaces.
-	for j := 0; j < len(row.content); j++ {
-		if row.content[j] == '\t' {
+	for _, char := range row.content {
+		if char == '\t' {
 			row.render[idx] = ' '
 			idx++
 			for ; idx%KILO_TAB_STOP != 0; idx++ {
 				row.render[idx] = ' '
 			}
 		} else {
-			row.render[idx] = row.content[j]
+			row.render[idx] = byte(char)
 			idx++
 		}
 	}
