@@ -391,6 +391,19 @@ func editorRowInsertChar(row *editorRow, at int, char rune) {
 	config.dirty = true
 }
 
+// Remove a single character from row at the given index.
+func editorRowDelChar(row *editorRow, at int) {
+	// Don't delete from invalid locations.
+	if at < 0 || at > row.Len() {
+		return
+	}
+
+	// Delete character and re-render the row.
+	row.content = string(slices.Delete([]rune(row.content), at, at+1))
+	editorUpdateRow(row)
+	config.dirty = true
+}
+
 // ==========================================
 // ========== Editor Operations =============
 // ==========================================
@@ -402,6 +415,21 @@ func editorInsertChar(char rune) {
 	}
 	editorRowInsertChar(&config.rows[config.cy], config.cx, char)
 	config.cx++
+}
+
+func editorDelChar() {
+	if config.cy == config.numrows {
+		// Past end of file, nothing to delete
+		return
+	}
+
+	row := &config.rows[config.cy]
+	if config.cx > 0 {
+		// We're not in the first column, delete the previous character.
+		editorRowDelChar(row, config.cx-1)
+		// Move the cursor back.
+		config.cx--
+	}
 }
 
 // ==========================================
@@ -738,8 +766,10 @@ func editorProcessKeypress() bool {
 	case CTRL_KEY('h'):
 		fallthrough
 	case DEL_KEY:
-		// TODO
-		break
+		if char == DEL_KEY {
+			editorMoveCursor(ARROW_RIGHT)
+		}
+		editorDelChar()
 	case PAGE_UP:
 		fallthrough
 	case PAGE_DOWN:
