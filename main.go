@@ -391,6 +391,13 @@ func editorRowInsertChar(row *editorRow, at int, char rune) {
 	config.dirty = true
 }
 
+// Append a string to the end of a row
+func editorRowAppendString(row *editorRow, s string) {
+	row.content += s
+	editorUpdateRow(row)
+	config.dirty = true
+}
+
 // Remove a single character from row at the given index.
 func editorRowDelChar(row *editorRow, at int) {
 	// Don't delete from invalid locations.
@@ -401,6 +408,17 @@ func editorRowDelChar(row *editorRow, at int) {
 	// Delete character and re-render the row.
 	row.content = string(slices.Delete([]rune(row.content), at, at+1))
 	editorUpdateRow(row)
+	config.dirty = true
+}
+
+// Remove an entire row
+func editorDelRow(at int) {
+	if at < 0 || at >= config.numrows {
+		// nothing to delete
+		return
+	}
+	slices.Delete(config.rows, at, at+1)
+	config.numrows--
 	config.dirty = true
 }
 
@@ -422,6 +440,10 @@ func editorDelChar() {
 		// Past end of file, nothing to delete
 		return
 	}
+	if config.cx == 0 && config.cy == 0 {
+		// At top left of file, nothing to delete
+		return
+	}
 
 	row := &config.rows[config.cy]
 	if config.cx > 0 {
@@ -429,6 +451,13 @@ func editorDelChar() {
 		editorRowDelChar(row, config.cx-1)
 		// Move the cursor back.
 		config.cx--
+	} else {
+		// We're in the first column, delete the current row and append
+		// its contents to previous row
+		config.cx = config.rows[config.cy-1].Len()
+		editorRowAppendString(&config.rows[config.cy-1], row.content)
+		editorDelRow(config.cy)
+		config.cy--
 	}
 }
 
