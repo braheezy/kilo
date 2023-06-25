@@ -19,6 +19,8 @@ import (
 const KILO_VERSION = "0.0.1"
 const KILO_TAB_STOP = 8
 
+// Define keys we care about and give them really high numbers
+// to avoid conflict with existing keys.
 const (
 	ARROW_LEFT = 1000 + iota
 	ARROW_RIGHT
@@ -37,9 +39,14 @@ func CTRL_KEY(k rune) int {
 	return int(k) & 0x1f
 }
 
-// Find the minimum of two values.
 func MIN(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+func MAX(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
@@ -70,11 +77,15 @@ type editorConfig struct {
 
 var config editorConfig
 
+// Holds the main viewport of the editor.
 var mainBuffer strings.Builder
 
+// Represents a row of text in the editor.
 type editorRow struct {
+	// The literal text of the row.
 	content string
-	render  []byte
+	// Our render of the content, with tabs expanded.
+	render []byte
 }
 
 func (e editorRow) Len() int {
@@ -296,27 +307,37 @@ func getWindowSize() (row int, col int) {
 // ============ Row Operations ==============
 // ==========================================
 
+// Convert content x-coord to render x-coord.
+// Basically, deal with tabs.
 func editorRowCxToRx(row *editorRow, cx int) int {
+	// Copy cx coordinates to rx, unless a tab is encountered.
+	// Then, increment rx by the tab's width.
 	rx := 0
 	for j := 0; j < cx; j++ {
 		if row.content[j] == '\t' {
+			// '\t' already consumes 1 space, so TAB_STOP - 1 is the total amount of tabs
+			// Then, subtract off the amount of space already consumed in the TAB_STOP.
 			rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP)
 		}
 		rx++
 	}
 	return rx
 }
+
+// Fully render a row's content.
 func editorUpdateRow(row *editorRow) {
 	tabs := 0
-	// Replace tabs with spaces
+	// Count how many tabs are in the row.
 	for j := 0; j < len(row.content); j++ {
 		if row.content[j] == '\t' {
 			tabs++
 		}
 	}
 
+	// Allocate max space for the render, which is the content + expanded tabs.
 	row.render = make([]byte, len(row.content)+(tabs*(KILO_TAB_STOP-1))+1)
 	idx := 0
+	// Copy content to render, replacing tabs with spaces.
 	for j := 0; j < len(row.content); j++ {
 		if row.content[j] == '\t' {
 			row.render[idx] = ' '
@@ -331,6 +352,8 @@ func editorUpdateRow(row *editorRow) {
 	}
 	row.render[idx] = '\x00'
 }
+
+// Add a new row to global editor rows, ensuring to render it too.
 func editorAppendRow(row string) {
 	config.rows = append(config.rows, editorRow{content: row})
 	editorUpdateRow(&config.rows[config.numrows])
@@ -363,9 +386,11 @@ func editorOpen(filename string) {
 // editorScroll detects scroll based on cursor position.
 func editorScroll() {
 	config.rx = 0
+	// If we have an active editor row, compute the render x-coord.
 	if config.cy < config.numrows {
 		config.rx = editorRowCxToRx(&config.rows[config.cy], config.cx)
 	}
+
 	// Check if cursor is above visible window
 	if config.cy < config.rowOffset {
 		config.rowOffset = config.cy
@@ -389,6 +414,7 @@ func editorScroll() {
 
 // editorRefreshScreen is called every cycle to repaint the screen.
 func editorRefreshScreen() {
+	// Compute screen position based on cursor position.
 	editorScroll()
 
 	// Hide the cursor before painting screen
@@ -396,6 +422,7 @@ func editorRefreshScreen() {
 	// Reposition cursor to top left
 	mainBuffer.WriteString("\x1b[H")
 
+	// Draw all of the content, broken into rows.
 	editorDrawRows(&mainBuffer)
 
 	// Draw cursor
@@ -405,7 +432,9 @@ func editorRefreshScreen() {
 	// Bring the cursor back
 	mainBuffer.WriteString("\x1b[?25h")
 
+	// Flush the buffer to the screen.
 	fmt.Print(mainBuffer.String())
+
 	mainBuffer.Reset()
 }
 
@@ -420,12 +449,14 @@ func cleanScreen(buf *strings.Builder) {
 
 // editorDrawRows draws each visible line of the editor.
 func editorDrawRows(buf *strings.Builder) {
+	// Iterate over every row on the screen and determine the content that should be there.
 	for y := 0; y < config.screenrows; y++ {
-		// Determine the row index
+		// Figure out the line of the file we are viewing.
 		fileRow := y + config.rowOffset
 		if fileRow >= config.numrows {
-			// Show welcome message
+			// The current line is outside of the file, what to draw?
 			if config.numrows == 0 && y == config.screenrows/3 {
+				// If the file is empty, show a welcome message.
 				welcomeMsg := fmt.Sprintf("Kilo editor -- version %s", KILO_VERSION)
 				welcomeLen := MIN(len(welcomeMsg), config.screencols)
 				// Center the welcome message
@@ -440,30 +471,31 @@ func editorDrawRows(buf *strings.Builder) {
 				// Truncate the welcome message to the screen width.
 				buf.WriteString(welcomeMsg[0:welcomeLen])
 			} else {
-				// Fill the rest of the screen with tildes
+				// Fill the right column with tildes for the rest of the file.
 				buf.WriteString("~")
 			}
 		} else {
 			// Show the row contents
+			// The size of the row is determined by the number of columns that have been scrolled
+			// plus the render length
 			rowSize := config.rows[fileRow].RLen() - config.colOffset
-			if rowSize < 0 {
-				rowSize = 0
-			}
-			if rowSize > config.screencols {
-				rowSize = config.screencols
-			}
-
+			// Don't allow negative row sizes.
+			rowSize = MAX(rowSize, 0)
+			// Don't allow row sizes greater than the screen width.
+			rowSize = MIN(rowSize, config.screencols)
+			// Draw the row if it should be shown, based on horizontal scroll
 			if rowSize > config.colOffset {
-				c := string(config.rows[fileRow].render)
-				buf.WriteString(c[config.colOffset:rowSize])
+				rowRender := string(config.rows[fileRow].render)
+				truncatedRow := rowRender[config.colOffset:rowSize]
+				buf.WriteString(truncatedRow)
 			}
-
 		}
 
 		// Delete the rest of the line. This effectively clears
 		// the screen when this function runs the first time.
 		buf.WriteString("\x1b[K")
 
+		// Add new line to each row, except the last one.
 		if y < config.screenrows-1 {
 			buf.WriteString("\r\n")
 		}
@@ -474,7 +506,9 @@ func editorDrawRows(buf *strings.Builder) {
 // ================ Input ===================
 // ==========================================
 
+// Perform arithmetic to figure out new cursor position
 func editorMoveCursor(key int) {
+	// Fetch the current row so we can get it's dimensions and figure out how to move.
 	var row string
 	if config.cy < config.numrows {
 		row = config.rows[config.cy].content
@@ -482,43 +516,51 @@ func editorMoveCursor(key int) {
 
 	switch key {
 	case ARROW_UP:
+		// Move the cursor up one row if it's not already at the first row.
 		if config.cy != 0 {
 			config.cy--
 		}
 	case ARROW_LEFT:
+		// Move the cursor left one column if it's not already at the first column.
 		if config.cx != 0 {
 			config.cx--
 		} else if config.cy > 0 {
+			// Cursor is already at the first column, move it to the end of the previous row.
 			config.cy--
 			config.cx = config.rows[config.cy].Len()
 		}
 	case ARROW_DOWN:
+		// Move the cursor down one row if it's not already at the last row.
 		if config.cy < config.numrows {
 			config.cy++
 		}
 	case ARROW_RIGHT:
+		// Move the cursor right one column if it's not already at the last column.
 		if len(row) >= 0 && config.cx < len(row) {
 			config.cx++
 		} else if len(row) >= 0 && config.cx == len(row) {
+			// Cursor is already at the last column, move it to the beginning of the next row.
 			config.cy++
 			config.cx = 0
 		}
 	}
 
+	// Re-calculate current row with new cursor position.
 	if config.cy >= config.numrows {
 		row = ""
 	} else {
 		row = config.rows[config.cy].content
 	}
-	rowLength := 0
-	if len(row) > 0 {
-		rowLength = len(row)
-	}
+
+	rowLength := MAX(len(row), 0)
+
+	// Snap cursor to the end of the row.
 	if config.cx > rowLength {
 		config.cx = rowLength
 	}
 }
 
+// Handle user input
 func editorProcessKeypress() bool {
 	char := editorReadKey()
 
@@ -530,8 +572,10 @@ func editorProcessKeypress() bool {
 		return false
 
 	case HOME_KEY:
+		// Move the cursor to the beginning of the current row
 		config.cx = 0
 	case END_KEY:
+		// Move the cursor to the end of the current row if it's not already at the last row.
 		if config.cy < config.numrows {
 			config.cx = config.rows[config.cy].Len()
 		}
@@ -539,6 +583,7 @@ func editorProcessKeypress() bool {
 	case PAGE_UP:
 		fallthrough
 	case PAGE_DOWN:
+		// Move the cursor to the first/last visible row on the screen and scroll the view accordingly.
 		if char == PAGE_UP {
 			config.cy = config.rowOffset
 		} else if char == PAGE_DOWN {
@@ -546,6 +591,7 @@ func editorProcessKeypress() bool {
 			config.cy = MIN(config.cy, config.numrows)
 		}
 
+		// PAGE_UP/PAGE_DOWN is implemented as repeated ARROW_UP/ARROW_DOWN movements.
 		times := config.screenrows
 		for ; 0 < times; times-- {
 			if char == PAGE_UP {
@@ -571,6 +617,7 @@ func editorProcessKeypress() bool {
 // ==========================================
 // ================= Main ===================
 // ==========================================
+// Set initial editor state.
 func initializeEditor() {
 	config.screenrows, config.screencols = getWindowSize()
 	config.cx, config.cy, config.rx = 0, 0, 0
@@ -589,7 +636,6 @@ func main() {
 	args := os.Args[1:]
 
 	if len(args) >= 1 {
-		print("editorOpen")
 		editorOpen(args[0])
 	}
 
