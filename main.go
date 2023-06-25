@@ -55,11 +55,35 @@ type editorConfig struct {
 	screenrows, screencols int
 	// cursor position
 	cx, cy int
+	// A row of text in the editor
+	row string
+	// The number of rows in the editor
+	numrows int
 }
 
 var config editorConfig
 
 var mainBuffer strings.Builder
+
+// ==========================================
+// =============== File I/O =================
+// ==========================================
+
+func editorOpen(filename string) {
+	// Open file for reading
+	file, err := os.Open(filename)
+	if err != nil {
+		panic("Failed to open " + filename + " file: " + err.Error())
+	}
+	defer file.Close()
+
+	// Read line
+	scanner := bufio.NewScanner(file)
+	scanner.Scan()
+
+	config.row = scanner.Text()
+	config.numrows = 1
+}
 
 // ==========================================
 // =============== Terminal =================
@@ -303,22 +327,33 @@ func cleanScreen(buf *strings.Builder) {
 // editorDrawRows draws the tilde column
 func editorDrawRows(buf *strings.Builder) {
 	for y := 0; y < config.screenrows; y++ {
-		if y == config.screenrows/3 {
-			welcomeMsg := fmt.Sprintf("Kilo editor -- version %s", KILO_VERSION)
-			welcomeLen := MIN(len(welcomeMsg), config.screencols)
-			// Center the welcome message
-			padding := (config.screencols - welcomeLen) / 2
-			if padding > 0 {
+		if y >= config.numrows {
+			// Show welcome message
+			if config.numrows == 0 && y == config.screenrows/3 {
+				welcomeMsg := fmt.Sprintf("Kilo editor -- version %s", KILO_VERSION)
+				welcomeLen := MIN(len(welcomeMsg), config.screencols)
+				// Center the welcome message
+				padding := (config.screencols - welcomeLen) / 2
+				if padding > 0 {
+					buf.WriteString("~")
+					padding--
+				}
+				for ; padding > 0; padding-- {
+					buf.WriteRune(' ')
+				}
+				// Truncate the welcome message to the screen width.
+				buf.WriteString(welcomeMsg[0:welcomeLen])
+			} else {
+				// Fill the rest of the screen with tildes
 				buf.WriteString("~")
-				padding--
 			}
-			for ; padding > 0; padding-- {
-				buf.WriteRune(' ')
-			}
-			// Truncate the welcome message to the screen width.
-			buf.WriteString(welcomeMsg[0:welcomeLen])
 		} else {
-			buf.WriteString("~")
+			// Show the row contents
+			rowSize := len(config.row)
+			if rowSize > config.screencols {
+				rowSize = config.screencols
+			}
+			buf.WriteString(config.row[0:rowSize])
 		}
 
 		// Delete the rest of the line. This effectively clears
@@ -402,12 +437,21 @@ func editorProcessKeypress() bool {
 func initializeEditor() {
 	config.screenrows, config.screencols = getWindowSize()
 	config.cx, config.cy = 0, 0
+	config.numrows = 0
 }
+
 func main() {
 	enableRawMode()
 	defer exit()
 	defer disableRawMode()
 	initializeEditor()
+
+	args := os.Args[1:]
+
+	if len(args) >= 1 {
+		print("editorOpen")
+		editorOpen(args[0])
+	}
 
 	for {
 		editorRefreshScreen()
