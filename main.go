@@ -25,6 +25,7 @@ const KILO_MESSAGE_TIMEOUT = 5
 // Define keys we care about and give them really high numbers
 // to avoid conflict with existing keys.
 const (
+	BACKSPACE  = 127
 	ARROW_LEFT = 1000 + iota
 	ARROW_RIGHT
 	ARROW_UP
@@ -672,6 +673,13 @@ func editorProcessKeypress() bool {
 			config.cx = config.rows[config.cy].Len()
 		}
 
+	case BACKSPACE:
+		fallthrough
+	case CTRL_KEY('h'):
+		fallthrough
+	case DEL_KEY:
+		// TODO
+		break
 	case PAGE_UP:
 		fallthrough
 	case PAGE_DOWN:
@@ -701,6 +709,13 @@ func editorProcessKeypress() bool {
 		fallthrough
 	case ARROW_RIGHT:
 		editorMoveCursor(char)
+
+	// Ignore these
+	// Ctrl+l refreshes terminal screen but we're doing that all the time.
+	case CTRL_KEY('l'):
+		fallthrough
+	case '\x1b':
+		break
 
 	default:
 		editorInsertChar(rune(char))
