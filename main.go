@@ -55,10 +55,12 @@ type editorConfig struct {
 	screenrows, screencols int
 	// cursor position
 	cx, cy int
-	// A row of text in the editor
+	// The rows of text in the editor
 	row []string
 	// The number of rows in the editor
 	numrows int
+	// Current row the user is scrolled to
+	rowOffset int
 }
 
 var config editorConfig
@@ -304,8 +306,23 @@ func editorOpen(filename string) {
 // ================ Output ==================
 // ==========================================
 
+// editorScroll detects scroll based on cursor position.
+func editorScroll() {
+	// Check if cursor is above visible window
+	if config.cy < config.rowOffset {
+		config.rowOffset = config.cy
+	}
+
+	// Check if cursor is below visible window
+	if config.cy >= config.rowOffset+config.screenrows {
+		config.rowOffset = config.cy - config.screenrows + 1
+	}
+}
+
 // editorRefreshScreen is called every cycle to repaint the screen.
 func editorRefreshScreen() {
+	editorScroll()
+
 	// Hide the cursor before painting screen
 	mainBuffer.WriteString("\x1b[?25l")
 	// Reposition cursor to top left
@@ -315,7 +332,8 @@ func editorRefreshScreen() {
 
 	// Draw cursor
 	// +1 to put the cursor into terminal coordinates.
-	fmt.Fprintf(&mainBuffer, "\x1b[%d;%dH", config.cy+1, config.cx+1)
+	// Account for scroll changing the screen position.
+	fmt.Fprintf(&mainBuffer, "\x1b[%d;%dH", (config.cy-config.rowOffset)+1, config.cx+1)
 	// Bring the cursor back
 	mainBuffer.WriteString("\x1b[?25h")
 
@@ -332,10 +350,12 @@ func cleanScreen(buf *strings.Builder) {
 	buf.WriteString("\x1b[H")
 }
 
-// editorDrawRows draws the tilde column
+// editorDrawRows draws each visible line of the editor.
 func editorDrawRows(buf *strings.Builder) {
 	for y := 0; y < config.screenrows; y++ {
-		if y >= config.numrows {
+		// Determine the row index
+		fileRow := y + config.rowOffset
+		if fileRow >= config.numrows {
 			// Show welcome message
 			if config.numrows == 0 && y == config.screenrows/3 {
 				welcomeMsg := fmt.Sprintf("Kilo editor -- version %s", KILO_VERSION)
@@ -357,11 +377,11 @@ func editorDrawRows(buf *strings.Builder) {
 			}
 		} else {
 			// Show the row contents
-			rowSize := len(config.row[y])
+			rowSize := len(config.row[fileRow])
 			if rowSize > config.screencols {
 				rowSize = config.screencols
 			}
-			buf.WriteString(config.row[y][0:rowSize])
+			buf.WriteString(config.row[fileRow][0:rowSize])
 		}
 
 		// Delete the rest of the line. This effectively clears
@@ -389,7 +409,7 @@ func editorMoveCursor(key int) {
 			config.cx--
 		}
 	case ARROW_DOWN:
-		if config.cy != config.screenrows-1 {
+		if config.cy < config.numrows {
 			config.cy++
 		}
 	case ARROW_RIGHT:
@@ -447,6 +467,7 @@ func initializeEditor() {
 	config.cx, config.cy = 0, 0
 	config.numrows = 0
 	config.row = []string{}
+	config.rowOffset = 0
 }
 
 func main() {
