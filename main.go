@@ -21,6 +21,7 @@ import (
 const KILO_VERSION = "0.0.1"
 const KILO_TAB_STOP = 8
 const KILO_MESSAGE_TIMEOUT = 5
+const KILO_QUIT_TIMES = 3
 
 // Define keys we care about and give them really high numbers
 // to avoid conflict with existing keys.
@@ -99,6 +100,11 @@ type editorRow struct {
 	// Our render of the content, with tabs expanded.
 	render []byte
 }
+
+// Track how many times Quit has been attempted
+// This is done with a static variable in the original C code
+// but Go doesn't have static variables.
+var quitTimes int = KILO_QUIT_TIMES
 
 func (e editorRow) Len() int {
 	return len(e.content)
@@ -706,6 +712,11 @@ func editorProcessKeypress() bool {
 		break
 	case CTRL_KEY('q'):
 		// Quit
+		if config.dirty && quitTimes > 0 {
+			editorSetStatusMessage("HEY!! The file has unsaved changes. Press Ctrl+Q %d more times to quit.", quitTimes)
+			quitTimes--
+			return true
+		}
 		cleanScreen(&mainBuffer)
 		fmt.Print(mainBuffer.String())
 		return false
@@ -769,6 +780,9 @@ func editorProcessKeypress() bool {
 	default:
 		editorInsertChar(rune(char))
 	}
+
+	// Reset counter
+	quitTimes = KILO_QUIT_TIMES
 
 	return true
 }
