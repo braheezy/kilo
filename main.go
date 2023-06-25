@@ -56,7 +56,7 @@ type editorConfig struct {
 	// cursor position
 	cx, cy int
 	// A row of text in the editor
-	row string
+	row []string
 	// The number of rows in the editor
 	numrows int
 }
@@ -64,26 +64,6 @@ type editorConfig struct {
 var config editorConfig
 
 var mainBuffer strings.Builder
-
-// ==========================================
-// =============== File I/O =================
-// ==========================================
-
-func editorOpen(filename string) {
-	// Open file for reading
-	file, err := os.Open(filename)
-	if err != nil {
-		panic("Failed to open " + filename + " file: " + err.Error())
-	}
-	defer file.Close()
-
-	// Read line
-	scanner := bufio.NewScanner(file)
-	scanner.Scan()
-
-	config.row = scanner.Text()
-	config.numrows = 1
-}
 
 // ==========================================
 // =============== Terminal =================
@@ -293,6 +273,34 @@ func getWindowSize() (row int, col int) {
 }
 
 // ==========================================
+// ============ Row Operations ==============
+// ==========================================
+
+func editorAppendRow(row string) {
+	config.row = append(config.row, row)
+	config.numrows++
+}
+
+// ==========================================
+// =============== File I/O =================
+// ==========================================
+
+func editorOpen(filename string) {
+	// Open file for reading
+	file, err := os.Open(filename)
+	if err != nil {
+		panic("Failed to open " + filename + " file: " + err.Error())
+	}
+	defer file.Close()
+
+	// Read line
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		editorAppendRow(scanner.Text())
+	}
+}
+
+// ==========================================
 // ================ Output ==================
 // ==========================================
 
@@ -349,11 +357,11 @@ func editorDrawRows(buf *strings.Builder) {
 			}
 		} else {
 			// Show the row contents
-			rowSize := len(config.row)
+			rowSize := len(config.row[y])
 			if rowSize > config.screencols {
 				rowSize = config.screencols
 			}
-			buf.WriteString(config.row[0:rowSize])
+			buf.WriteString(config.row[y][0:rowSize])
 		}
 
 		// Delete the rest of the line. This effectively clears
@@ -438,6 +446,7 @@ func initializeEditor() {
 	config.screenrows, config.screencols = getWindowSize()
 	config.cx, config.cy = 0, 0
 	config.numrows = 0
+	config.row = []string{}
 }
 
 func main() {
