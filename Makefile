@@ -1,4 +1,4 @@
-PHONY: run count
+PHONY: run count debug
 
 .DEFAULT_GOAL := run
 
@@ -10,3 +10,7 @@ run: kilo
 
 count:
 	@cloc --quiet main.go
+
+debug:
+	@echo "Launching delv debug session. Run the VS Code 'Connect to server' debug configuration."
+	@dlv debug --headless --listen 127.0.0.1:42807 -- main.go
