@@ -372,8 +372,13 @@ func editorUpdateRow(row *editorRow) {
 }
 
 // Add a new row to global editor rows, ensuring to render it too.
-func editorAppendRow(row string) {
-	config.rows = append(config.rows, editorRow{content: row})
+func editorInsertRow(at int, rowContent string) {
+	if at < 0 || at > config.numrows {
+		return
+	}
+
+	config.rows = slices.Insert(config.rows, at, editorRow{content: rowContent})
+
 	editorUpdateRow(&config.rows[config.numrows])
 	config.numrows++
 	config.dirty = true
@@ -429,10 +434,31 @@ func editorDelRow(at int) {
 func editorInsertChar(char rune) {
 	if config.cy == config.numrows {
 		// Cursor on tilde lin after end of file, so we need a new row.
-		editorAppendRow("")
+		editorInsertRow(config.numrows, "")
 	}
 	editorRowInsertChar(&config.rows[config.cy], config.cx, char)
 	config.cx++
+}
+
+// Insert a newline when Enter is pressed
+func editorInsertNewline() {
+	if config.cx == 0 {
+		// We're at the beginning of a line, so insert a new blank row
+		editorInsertRow(config.cy, "")
+	} else {
+		// In the middle of a line, we need to split it
+		rowContent := config.rows[config.cy].content[config.cx:]
+		// Put content after the cursor on the next line
+		editorInsertRow(config.cy+1, rowContent)
+		// Get new reference to current row, it just changed
+		row := &config.rows[config.cy]
+		// Update current row to only include content before cursor
+		row.content = row.content[0:config.cx]
+		editorUpdateRow(row)
+	}
+	// Update cursor to new line.
+	config.cy++
+	config.cx = 0
 }
 
 func editorDelChar() {
@@ -487,7 +513,7 @@ func editorOpen(filename string) {
 	// Read line
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		editorAppendRow(scanner.Text())
+		editorInsertRow(config.numrows, scanner.Text())
 	}
 	config.dirty = false
 }
@@ -765,8 +791,7 @@ func editorProcessKeypress() bool {
 
 	switch char {
 	case '\r':
-		// TODO
-		break
+		editorInsertNewline()
 	case CTRL_KEY('q'):
 		// Quit
 		if config.dirty && quitTimes > 0 {
