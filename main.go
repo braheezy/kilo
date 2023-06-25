@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -18,6 +19,7 @@ import (
 
 const KILO_VERSION = "0.0.1"
 const KILO_TAB_STOP = 8
+const KILO_MESSAGE_TIMEOUT = 5
 
 // Define keys we care about and give them really high numbers
 // to avoid conflict with existing keys.
@@ -73,6 +75,12 @@ type editorConfig struct {
 	rowOffset int
 	// Current column the user is scrolled to
 	colOffset int
+	// The filename to display in the status bar.
+	filename string
+	// Status message text
+	statusMsg string
+	// Timestamp for the status message, used to determine how long it's been shown.
+	statusMsgTime time.Time
 }
 
 var config editorConfig
@@ -365,6 +373,7 @@ func editorAppendRow(row string) {
 // ==========================================
 
 func editorOpen(filename string) {
+	config.filename = filename
 	// Open file for reading
 	file, err := os.Open(filename)
 	if err != nil {
@@ -382,6 +391,62 @@ func editorOpen(filename string) {
 // ==========================================
 // ================ Output ==================
 // ==========================================
+
+// Set the status message.
+func editorSetStatusMessage(format string, args ...interface{}) {
+	config.statusMsg = fmt.Sprintf(format, args...)
+	config.statusMsgTime = time.Now()
+}
+
+// Draw the status bar at the bottom of the screen.
+func editorDrawStatusBar(buf *strings.Builder) {
+	// Invert colors
+	buf.WriteString("\x1b[7m")
+
+	// Add filename and line count.
+	displayFilename := config.filename
+	if len(config.filename) == 0 {
+		displayFilename = "[No Name]"
+	}
+	status := fmt.Sprintf("%.20s - %d lines", displayFilename, config.numrows)
+	// Truncate if longer than screen width.
+	statusLen := MIN(len(status), config.screencols)
+	buf.WriteString(status[0:statusLen])
+
+	// Define right status view, showing current line number.
+	rightStatus := fmt.Sprintf("%d/%d", config.cy+1, config.numrows)
+	rightStatusLen := len(rightStatus)
+
+	// Print the rest of the status.
+	for statusLen < config.screencols {
+		// Show the right status view, if it fits.
+		if config.screencols-statusLen == rightStatusLen {
+			buf.WriteString(rightStatus[0:rightStatusLen])
+			// The entire status has been printed. Bail out.
+			break
+		} else {
+			// Add a bunch of spaces, effectively making a white bar.
+			buf.WriteRune(' ')
+			statusLen++
+		}
+	}
+
+	// Put the colors back to normal
+	buf.WriteString("\x1b[m")
+	// Put another newline, giving room for the status message.
+	buf.WriteString("\r\n")
+}
+
+func editorDrawMessageBar(buf *strings.Builder) {
+	// Clear any existing content
+	buf.WriteString("\x1b[K")
+	// Truncate message if it doesn't fit
+	messageLen := MIN(len(config.statusMsg), config.screencols)
+	// Show message, if it fits and is within timer bounds.
+	if messageLen > 0 && time.Since(config.statusMsgTime).Seconds() < KILO_MESSAGE_TIMEOUT {
+		buf.WriteString(config.statusMsg[0:messageLen])
+	}
+}
 
 // editorScroll detects scroll based on cursor position.
 func editorScroll() {
@@ -424,6 +489,10 @@ func editorRefreshScreen() {
 
 	// Draw all of the content, broken into rows.
 	editorDrawRows(&mainBuffer)
+
+	// Draw the status bar.
+	editorDrawStatusBar(&mainBuffer)
+	editorDrawMessageBar(&mainBuffer)
 
 	// Draw cursor
 	// +1 to put the cursor into terminal coordinates.
@@ -495,10 +564,8 @@ func editorDrawRows(buf *strings.Builder) {
 		// the screen when this function runs the first time.
 		buf.WriteString("\x1b[K")
 
-		// Add new line to each row, except the last one.
-		if y < config.screenrows-1 {
-			buf.WriteString("\r\n")
-		}
+		// Add new line to each row.
+		buf.WriteString("\r\n")
 	}
 }
 
@@ -538,7 +605,7 @@ func editorMoveCursor(key int) {
 		// Move the cursor right one column if it's not already at the last column.
 		if len(row) >= 0 && config.cx < len(row) {
 			config.cx++
-		} else if len(row) >= 0 && config.cx == len(row) {
+		} else if len(row) > 0 && config.cx == len(row) {
 			// Cursor is already at the last column, move it to the beginning of the next row.
 			config.cy++
 			config.cx = 0
@@ -620,11 +687,10 @@ func editorProcessKeypress() bool {
 // Set initial editor state.
 func initializeEditor() {
 	config.screenrows, config.screencols = getWindowSize()
-	config.cx, config.cy, config.rx = 0, 0, 0
-	config.numrows = 0
-	config.rows = []editorRow{}
-	config.rowOffset = 0
-	config.colOffset = 0
+
+	// Fool editorDrawRows into not drawing the last rows, which
+	// we'll use for status
+	config.screenrows -= 2
 }
 
 func main() {
@@ -638,6 +704,8 @@ func main() {
 	if len(args) >= 1 {
 		editorOpen(args[0])
 	}
+
+	editorSetStatusMessage("HELP: Ctrl-Q - quit")
 
 	for {
 		editorRefreshScreen()
