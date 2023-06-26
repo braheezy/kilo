@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/unix"
@@ -520,8 +521,11 @@ func editorOpen(filename string) {
 
 func editorSave() {
 	if len(config.filename) == 0 {
-		// No file to save to
-		return
+		var err error
+		config.filename, err = editorPrompt("Save as: %s")
+		if err != nil {
+			editorSetStatusMessage("Save aborted: %s", err.Error())
+		}
 	}
 
 	editorString := editorRowsToString(&config.rows)
@@ -730,6 +734,32 @@ func editorDrawRows(buf *strings.Builder) {
 // ==========================================
 // ================ Input ===================
 // ==========================================
+
+func editorPrompt(prompt string) (string, error) {
+	var userInput string
+
+	for {
+		editorSetStatusMessage(prompt, userInput)
+		editorRefreshScreen()
+
+		char := editorReadKey()
+		if char == DEL_KEY || char == CTRL_KEY('h') || char == BACKSPACE {
+			if len(userInput) > 0 {
+				userInput = userInput[0 : len(userInput)-1]
+			}
+		} else if char == '\x1b' {
+			editorSetStatusMessage("")
+			return "", errors.New("user cancelled")
+		} else if char == '\r' {
+			if len(userInput) > 0 {
+				editorSetStatusMessage("")
+				return userInput, nil
+			}
+		} else if !unicode.IsControl(rune(char)) && char < 128 {
+			userInput += string(rune(char))
+		}
+	}
+}
 
 // Perform arithmetic to figure out new cursor position
 func editorMoveCursor(key int) {
