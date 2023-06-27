@@ -346,7 +346,7 @@ func editorRowCxToRx(row *editorRow, cx int) int {
 func editorRowRxToCx(row *editorRow, rx int) int {
 	cx := 0
 	currentRx := 0
-	for _, char := range row.render[:cx] {
+	for _, char := range row.content {
 		if char == '\t' {
 			// '\t' already consumes 1 space, so TAB_STOP - 1 is the total amount of tabs
 			// Then, subtract off the amount of space already consumed in the TAB_STOP.
@@ -357,6 +357,7 @@ func editorRowRxToCx(row *editorRow, rx int) int {
 		if currentRx > rx {
 			return cx
 		}
+		cx++
 	}
 	// only hit if rx is larger than the row's length(?)
 	return cx
@@ -541,7 +542,7 @@ func editorOpen(filename string) {
 func editorSave() {
 	if len(config.filename) == 0 {
 		var err error
-		config.filename, err = editorPrompt("Save as: %s")
+		config.filename, err = editorPrompt("Save as: %s", nil)
 		if err != nil {
 			editorSetStatusMessage("Save aborted: %s", err.Error())
 		}
@@ -568,10 +569,8 @@ func editorSave() {
 // ================= Find ===================
 // ==========================================
 
-// Find a string in the editor.
-func editorFind() {
-	query, _ := editorPrompt("Search: %s (ESC to cancel)")
-	if len(query) == 0 {
+func editorOnInputFind(query string, key int) {
+	if key == '\r' || key == ESC {
 		return
 	}
 
@@ -579,11 +578,19 @@ func editorFind() {
 		if matchIndex := strings.Index(string(row.render), query); matchIndex != -1 {
 			config.cy = i
 			config.cx = editorRowRxToCx(&row, matchIndex)
+			// config.cx = matchIndex
 			// Put the finding at the top of the screen
 			config.rowOffset = config.numrows
 		}
 	}
+}
 
+// Find a string in the editor, with incremental search
+func editorFind() {
+	query, _ := editorPrompt("Search: %s (ESC to cancel)", editorOnInputFind)
+	if len(query) == 0 {
+		return
+	}
 }
 
 // ==========================================
@@ -775,7 +782,7 @@ func editorDrawRows(buf *strings.Builder) {
 // ================ Input ===================
 // ==========================================
 
-func editorPrompt(prompt string) (string, error) {
+func editorPrompt(prompt string, onInput func(string, int)) (string, error) {
 	var userInput string
 
 	for {
@@ -787,16 +794,26 @@ func editorPrompt(prompt string) (string, error) {
 			if len(userInput) > 0 {
 				userInput = userInput[0 : len(userInput)-1]
 			}
-		} else if char == '\x1b' {
+		} else if char == ESC {
 			editorSetStatusMessage("")
+			if onInput != nil {
+				onInput(userInput, char)
+			}
 			return "", errors.New("user cancelled")
 		} else if char == '\r' {
 			if len(userInput) > 0 {
 				editorSetStatusMessage("")
+				if onInput != nil {
+					onInput(userInput, char)
+				}
 				return userInput, nil
 			}
 		} else if !unicode.IsControl(rune(char)) && char < 128 {
 			userInput += string(rune(char))
+		}
+
+		if onInput != nil {
+			onInput(userInput, char)
 		}
 	}
 }
