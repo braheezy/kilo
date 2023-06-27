@@ -343,6 +343,25 @@ func editorRowCxToRx(row *editorRow, cx int) int {
 	return rx
 }
 
+func editorRowRxToCx(row *editorRow, rx int) int {
+	cx := 0
+	currentRx := 0
+	for _, char := range row.render[:cx] {
+		if char == '\t' {
+			// '\t' already consumes 1 space, so TAB_STOP - 1 is the total amount of tabs
+			// Then, subtract off the amount of space already consumed in the TAB_STOP.
+			currentRx += (KILO_TAB_STOP - 1) - (currentRx % KILO_TAB_STOP)
+		}
+		currentRx++
+
+		if currentRx > rx {
+			return cx
+		}
+	}
+	// only hit if rx is larger than the row's length(?)
+	return cx
+}
+
 // Fully render a row's content.
 func editorUpdateRow(row *editorRow) {
 	tabs := 0
@@ -542,6 +561,27 @@ func editorSave() {
 	} else {
 		config.dirty = false
 		editorSetStatusMessage("%d bytes written to disk", len(editorString))
+	}
+}
+
+// ==========================================
+// ================= Find ===================
+// ==========================================
+
+// Find a string in the editor.
+func editorFind() {
+	query, _ := editorPrompt("Search: %s (ESC to cancel)")
+	if len(query) == 0 {
+		return
+	}
+
+	for i, row := range config.rows {
+		if matchIndex := strings.Index(string(row.render), query); matchIndex != -1 {
+			config.cy = i
+			config.cx = editorRowRxToCx(&row, matchIndex)
+			// Put the finding at the top of the screen
+			config.rowOffset = config.numrows
+		}
 	}
 
 }
@@ -836,6 +876,9 @@ func editorProcessKeypress() bool {
 	case CTRL_KEY('s'):
 		editorSave()
 
+	case CTRL_KEY('f'):
+		editorFind()
+
 	case HOME_KEY:
 		// Move the cursor to the beginning of the current row
 		config.cx = 0
@@ -925,7 +968,7 @@ func main() {
 		editorOpen(args[0])
 	}
 
-	editorSetStatusMessage("HELP: Ctrl-Q - quit")
+	editorSetStatusMessage("HELP: Ctrl-Q - quit | Ctrl-S - save | Ctrl-F - find")
 
 	for {
 		editorRefreshScreen()
