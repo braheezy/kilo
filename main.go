@@ -39,6 +39,8 @@ const (
 	PAGE_DOWN
 )
 const ESC = '\x1b' // 27
+const RED = "\x1b[31m"
+const DEFAULT = "\x1b[39m"
 
 // CTRL_KEY is a mask for the control keys,
 // stripping bits 5 and 6 from the character code, k.
@@ -813,7 +815,16 @@ func editorDrawRows(buf *strings.Builder) {
 			if rowSize > config.colOffset {
 				rowRender := string(config.rows[fileRow].render)
 				truncatedRow := rowRender[config.colOffset:rowSize]
-				buf.WriteString(truncatedRow)
+				for _, char := range truncatedRow {
+					if unicode.IsDigit(char) {
+						buf.WriteString(RED)
+						buf.WriteRune(char)
+						buf.WriteString(DEFAULT)
+					} else {
+						buf.WriteRune(char)
+					}
+
+				}
 			}
 		}
 
