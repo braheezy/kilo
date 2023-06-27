@@ -569,19 +569,56 @@ func editorSave() {
 // ==========================================
 // ================= Find ===================
 // ==========================================
+// TODO: No static variables in Go so these are global for now.
+// -1 means no match
+var lastMatch int
+
+// 1 means forward, -1 means backward
+var direction int
 
 func editorOnInputFind(query string, key int) {
 	if key == '\r' || key == ESC {
+		// reset values
+		lastMatch = -1
+		direction = 1
 		return
+	} else if key == ARROW_RIGHT || key == ARROW_DOWN {
+		direction = 1
+	} else if key == ARROW_LEFT || key == ARROW_UP {
+		direction = -1
+	} else {
+		// reset values
+		lastMatch = -1
+		direction = 1
 	}
 
-	for i, row := range config.rows {
+	if lastMatch == -1 {
+		// no match, search forward
+		direction = 1
+	}
+
+	// If there was a last match, currentRow is the line after (or before, if searching backwards).
+	// If there wasn’t, it starts at the top of the file and searches in the forward direction to find the first match.
+	currentRow := lastMatch
+	for range config.rows {
+		currentRow += direction
+
+		// Wrap around search
+		if currentRow == -1 {
+			currentRow = config.numrows - 1
+		} else if currentRow == config.numrows {
+			currentRow = 0
+		}
+
+		row := config.rows[currentRow]
 		if matchIndex := strings.Index(string(row.render), query); matchIndex != -1 {
-			config.cy = i
+			// Set lastMatch so if user presses arrow keys, we search from this point
+			lastMatch = currentRow
+			config.cy = currentRow
 			config.cx = editorRowRxToCx(&row, matchIndex)
-			// config.cx = matchIndex
 			// Put the finding at the top of the screen
 			config.rowOffset = config.numrows
+			break
 		}
 	}
 }
@@ -594,7 +631,7 @@ func editorFind() {
 	curColOff := config.colOffset
 	curRowOff := config.rowOffset
 
-	query, _ := editorPrompt("Search: %s (ESC to cancel)", editorOnInputFind)
+	query, _ := editorPrompt("Search: %s (Use ESC/Arrows/Enter)", editorOnInputFind)
 	if len(query) == 0 {
 		// User cancelled
 		config.cx = currCx
