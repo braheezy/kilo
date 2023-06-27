@@ -106,7 +106,7 @@ type editorRow struct {
 // Track how many times Quit has been attempted
 // This is done with a static variable in the original C code
 // but Go doesn't have static variables.
-var quitTimes int = KILO_QUIT_TIMES
+var quitTimes = KILO_QUIT_TIMES
 
 func (e editorRow) Len() int {
 	return len(e.content)
