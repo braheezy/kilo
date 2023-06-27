@@ -588,9 +588,19 @@ func editorOnInputFind(query string, key int) {
 
 // Find a string in the editor, with incremental search
 func editorFind() {
+	// Save current cursor and scrollback position
+	currCx := config.cx
+	currCy := config.cy
+	curColOff := config.colOffset
+	curRowOff := config.rowOffset
+
 	query, _ := editorPrompt("Search: %s (ESC to cancel)", editorOnInputFind)
 	if len(query) == 0 {
-		return
+		// User cancelled
+		config.cx = currCx
+		config.cy = currCy
+		config.colOffset = curColOff
+		config.rowOffset = curRowOff
 	}
 }
 
