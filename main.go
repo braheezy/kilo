@@ -38,6 +38,7 @@ const (
 	PAGE_UP
 	PAGE_DOWN
 )
+const ESC = '\x1b' // 27
 
 // CTRL_KEY is a mask for the control keys,
 // stripping bits 5 and 6 from the character code, k.
@@ -189,17 +190,17 @@ func editorReadKey() (key int) {
 	}
 
 	// Handle <esc>-ed sequence "keys"
-	if char == '\x1b' {
+	if char == ESC {
 		var seq [3]rune
 
 		// Read the next 2 bytes. If these fail, they probably typed <esc>
 		seq[0], _, err = reader.ReadRune()
 		if err != nil {
-			return '\x1b'
+			return ESC
 		}
 		seq[1], _, err = reader.ReadRune()
 		if err != nil {
-			return '\x1b'
+			return ESC
 		}
 
 		if seq[0] == '[' {
@@ -207,8 +208,8 @@ func editorReadKey() (key int) {
 			if seq[1] >= '0' && seq[1] <= '9' {
 				seq[2], _, err = reader.ReadRune()
 				if err != nil {
-					// We don't recognize this sequence, return <esc>
-					return '\x1b'
+					// We don't recognize this sequence
+					return ESC
 				}
 				// Handle escape sequences like <esc>[5~
 				if seq[2] == '~' {
@@ -255,8 +256,8 @@ func editorReadKey() (key int) {
 				return END_KEY
 			}
 		}
-		// We don't recognize this sequence, return <esc>
-		return '\x1b'
+		// We don't recognize this sequence
+		return ESC
 	} else {
 		return int(char)
 	}
@@ -291,7 +292,7 @@ func getCursorPosition() (row int, col int, err error) {
 	//     <esc>[24;80
 	// where <esc> is \x1b
 	// 24 is the row and 80 is the column
-	if buf[0] != '\x1b' || buf[1] != '[' {
+	if buf[0] != ESC || buf[1] != '[' {
 		return 0, 0, errors.New("improper cursor position response")
 	}
 
@@ -948,7 +949,7 @@ func editorProcessKeypress() bool {
 	// Ctrl+l refreshes terminal screen but we're doing that all the time.
 	case CTRL_KEY('l'):
 		fallthrough
-	case '\x1b':
+	case ESC:
 		break
 
 	default:
