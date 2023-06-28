@@ -38,17 +38,21 @@ const (
 	PAGE_UP
 	PAGE_DOWN
 )
-const (
-	HL_NORMAL = iota
-	HL_NUMBER
-)
 
 const RED = 31
+const BLUE = 34
 const WHITE = 37
 const DEFAULT = 39
 
+const (
+	HL_NORMAL uint8 = iota
+	HL_NUMBER
+	HL_MATCH
+)
+
 var syntaxColors = map[uint8]int{
 	HL_NUMBER: RED,
+	HL_MATCH:  BLUE,
 }
 
 const ESC = '\x1b' // 27
@@ -350,6 +354,7 @@ func editorSyntaxToColor(syntax uint8) int {
 		return WHITE
 	}
 }
+
 func editorUpdateSyntax(row *editorRow) {
 	row.highlights = make([]uint8, len(row.render))
 
@@ -617,7 +622,21 @@ var lastMatch int
 // 1 means forward, -1 means backward
 var direction int
 
+// Restore highlight after search
+var savedHighlightIndex int = 0
+var savedHighlights []uint8 = nil
+
 func editorOnInputFind(query string, key int) {
+
+	if savedHighlights != nil {
+		// Restore highlights
+		for i := range config.rows[savedHighlightIndex].render {
+			config.rows[savedHighlightIndex].highlights[i] = savedHighlights[i]
+		}
+		savedHighlightIndex = 0
+		savedHighlights = nil
+	}
+
 	if key == '\r' || key == ESC {
 		// reset values
 		lastMatch = -1
@@ -651,14 +670,25 @@ func editorOnInputFind(query string, key int) {
 			currentRow = 0
 		}
 
-		row := config.rows[currentRow]
+		row := &config.rows[currentRow]
 		if matchIndex := strings.Index(string(row.render), query); matchIndex != -1 {
 			// Set lastMatch so if user presses arrow keys, we search from this point
 			lastMatch = currentRow
 			config.cy = currentRow
-			config.cx = editorRowRxToCx(&row, matchIndex)
+			config.cx = editorRowRxToCx(row, matchIndex)
 			// Put the finding at the top of the screen
 			config.rowOffset = config.numrows
+
+			// Record highlight
+			savedHighlightIndex = currentRow
+			savedHighlights = make([]uint8, row.RLen())
+			for i := range row.render {
+				savedHighlights[i] = row.highlights[i]
+			}
+
+			for i := range query {
+				row.highlights[matchIndex+i] = HL_MATCH
+			}
 			break
 		}
 	}
@@ -868,12 +898,13 @@ func editorDrawRows(buf *strings.Builder) {
 						color := editorSyntaxToColor(highlights[i])
 						if color != currentColor {
 							buf.WriteString(fmt.Sprintf("\x1b[%dm", color))
+							currentColor = color
 						}
 						buf.WriteRune(char)
 					}
 				}
-				buf.WriteString(fmt.Sprintf("\x1b[%dm", DEFAULT))
 			}
+			buf.WriteString(fmt.Sprintf("\x1b[%dm", DEFAULT))
 		}
 
 		// Delete the rest of the line. This effectively clears
