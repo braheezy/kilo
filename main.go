@@ -38,9 +38,20 @@ const (
 	PAGE_UP
 	PAGE_DOWN
 )
+const (
+	HL_NORMAL = iota
+	HL_NUMBER
+)
+
+const RED = 31
+const WHITE = 37
+const DEFAULT = 39
+
+var syntaxColors = map[uint8]int{
+	HL_NUMBER: RED,
+}
+
 const ESC = '\x1b' // 27
-const RED = "\x1b[31m"
-const DEFAULT = "\x1b[39m"
 
 // CTRL_KEY is a mask for the control keys,
 // stripping bits 5 and 6 from the character code, k.
@@ -102,7 +113,10 @@ type editorRow struct {
 	// The literal text of the row.
 	content string
 	// Our render of the content, with tabs expanded.
-	render []byte
+	render []rune
+	// The syntax-highlight properties for the row.
+	// Each position corresponds to a character in the render string.
+	highlights []uint8
 }
 
 // Track how many times Quit has been attempted
@@ -326,6 +340,29 @@ func getWindowSize() (row int, col int) {
 }
 
 // ==========================================
+// ========= Syntax Highlighting ============
+// ==========================================
+
+func editorSyntaxToColor(syntax uint8) int {
+	if color, ok := syntaxColors[syntax]; ok {
+		return color
+	} else {
+		return WHITE
+	}
+}
+func editorUpdateSyntax(row *editorRow) {
+	row.highlights = make([]uint8, len(row.render))
+
+	for i, char := range row.render {
+		if unicode.IsDigit(char) {
+			row.highlights[i] = HL_NUMBER
+		} else {
+			row.highlights[i] = HL_NORMAL
+		}
+	}
+}
+
+// ==========================================
 // ============ Row Operations ==============
 // ==========================================
 
@@ -377,7 +414,7 @@ func editorUpdateRow(row *editorRow) {
 	}
 
 	// Allocate max space for the render, which is the content + expanded tabs.
-	row.render = make([]byte, len(row.content)+(tabs*(KILO_TAB_STOP-1))+1)
+	row.render = make([]rune, len(row.content)+(tabs*(KILO_TAB_STOP-1))+1)
 	idx := 0
 	// Copy content to render, replacing tabs with spaces.
 	for _, char := range row.content {
@@ -388,11 +425,13 @@ func editorUpdateRow(row *editorRow) {
 				row.render[idx] = ' '
 			}
 		} else {
-			row.render[idx] = byte(char)
+			row.render[idx] = char
 			idx++
 		}
 	}
 	row.render[idx] = '\x00'
+
+	editorUpdateSyntax(row)
 }
 
 // Add a new row to global editor rows, ensuring to render it too.
@@ -811,20 +850,29 @@ func editorDrawRows(buf *strings.Builder) {
 			rowSize = MAX(rowSize, 0)
 			// Don't allow row sizes greater than the screen width.
 			rowSize = MIN(rowSize, config.screencols)
+			// Track syntax color so we're not spamming escape sequences if the color doesn't change
+			currentColor := DEFAULT
 			// Draw the row if it should be shown, based on horizontal scroll
 			if rowSize > config.colOffset {
 				rowRender := string(config.rows[fileRow].render)
 				truncatedRow := rowRender[config.colOffset:rowSize]
-				for _, char := range truncatedRow {
-					if unicode.IsDigit(char) {
-						buf.WriteString(RED)
+				highlights := config.rows[fileRow].highlights
+				for i, char := range truncatedRow {
+					if highlights[i] == HL_NORMAL {
+						if currentColor != DEFAULT {
+							buf.WriteString(fmt.Sprintf("\x1b[%dm", DEFAULT))
+							currentColor = DEFAULT
+						}
 						buf.WriteRune(char)
-						buf.WriteString(DEFAULT)
 					} else {
+						color := editorSyntaxToColor(highlights[i])
+						if color != currentColor {
+							buf.WriteString(fmt.Sprintf("\x1b[%dm", color))
+						}
 						buf.WriteRune(char)
 					}
-
 				}
+				buf.WriteString(fmt.Sprintf("\x1b[%dm", DEFAULT))
 			}
 		}
 
