@@ -10,6 +10,7 @@ run: kilo
 
 count:
 	@cloc --quiet main.go
+	@echo "Total: $$(wc -l main.go | awk '{printf $$1}')"
 
 debug:
 	@echo "Launching delv debug session. Run the VS Code 'Connect to server' debug configuration."
