@@ -76,9 +76,23 @@ func MAX(a, b int) int {
 	return b
 }
 
+const (
+	HL_HIGHLIGHT_NUMBERS = 1 << iota
+)
+
 // ==========================================
 // ================= Data ===================
 // ==========================================
+
+// Maintain syntax highlight state for known file types
+type editorSyntax struct {
+	// The current file type
+	filetype string
+	// Patterns used to detect file types
+	supportedFileTypePatterns []string
+	// Bit field to control highlighting rules
+	flags int
+}
 
 // Maintain state of the editor.
 type editorConfig struct {
@@ -105,6 +119,8 @@ type editorConfig struct {
 	statusMsg string
 	// Timestamp for the status message, used to determine how long it's been shown.
 	statusMsgTime time.Time
+	// Current highlight rules for the file
+	syntax *editorSyntax
 }
 
 var config editorConfig
@@ -134,6 +150,21 @@ func (e editorRow) Len() int {
 
 func (e editorRow) RLen() int {
 	return len(e.render)
+}
+
+// ==========================================
+// ============== File Types ================
+// ==========================================
+// File type support lies here.
+// Define supported extensions.
+var GO_HL_extensions = []string{".go"}
+
+var highlightDB = []editorSyntax{
+	{
+		"go",
+		GO_HL_extensions,
+		HL_HIGHLIGHT_NUMBERS,
+	},
 }
 
 // ==========================================
@@ -359,9 +390,16 @@ func editorSyntaxToColor(syntax uint8) int {
 	}
 }
 
+// Apply syntax highlighting to row
 func editorUpdateSyntax(row *editorRow) {
 	row.highlights = make([]uint8, len(row.render))
 
+	if config.syntax == nil {
+		// we don't have a highlight rules for this file type
+		return
+	}
+
+	// For smarter highlight behavior, track separators in the row
 	prevCharWasSeparator := true
 
 	for i, char := range row.render {
@@ -370,12 +408,39 @@ func editorUpdateSyntax(row *editorRow) {
 			prevCharHighlight = row.highlights[i-1]
 		}
 
-		if (unicode.IsDigit(char) && (prevCharWasSeparator || prevCharHighlight == HL_NUMBER)) ||
-			(char == '.' && prevCharHighlight == HL_NUMBER) {
-			row.highlights[i] = HL_NUMBER
-			prevCharWasSeparator = false
-		} else {
-			prevCharWasSeparator = isSeparator(char)
+		if config.syntax.flags&HL_HIGHLIGHT_NUMBERS > 0 {
+			if (unicode.IsDigit(char) && (prevCharWasSeparator || prevCharHighlight == HL_NUMBER)) ||
+				(char == '.' && prevCharHighlight == HL_NUMBER) {
+				row.highlights[i] = HL_NUMBER
+				prevCharWasSeparator = false
+			} else {
+				prevCharWasSeparator = isSeparator(char)
+			}
+		}
+	}
+}
+
+// Figure out highlight rules to apply to current file
+func editorSelectSyntaxHighlight() {
+	config.syntax = nil
+	if len(config.filename) == 0 {
+		return
+	}
+
+	_, fileExt, foundFileExt := strings.Cut(config.filename, ".")
+	for _, supportedSyntax := range highlightDB {
+		for _, fileType := range supportedSyntax.supportedFileTypePatterns {
+			isExtPattern := fileType[0] == '.'
+			if isExtPattern && foundFileExt && "."+fileExt == fileType ||
+				(!isExtPattern && strings.Contains(config.filename, fileType)) {
+				config.syntax = &supportedSyntax
+
+				// Apply a possibly fresh syntax to the editor.
+				for i := range config.rows {
+					editorUpdateSyntax(&config.rows[i])
+				}
+				return
+			}
 		}
 	}
 }
@@ -584,6 +649,8 @@ func editorRowsToString(rows *[]editorRow) string {
 
 func editorOpen(filename string) {
 	config.filename = filename
+	editorSelectSyntaxHighlight()
+
 	// Open file for reading
 	file, err := os.Open(filename)
 	if err != nil {
@@ -605,7 +672,9 @@ func editorSave() {
 		config.filename, err = editorPrompt("Save as: %s", nil)
 		if err != nil {
 			editorSetStatusMessage("Save aborted: %s", err.Error())
+			return
 		}
+		editorSelectSyntaxHighlight()
 	}
 
 	editorString := editorRowsToString(&config.rows)
@@ -754,8 +823,12 @@ func editorDrawStatusBar(buf *strings.Builder) {
 	statusLen := MIN(len(status), config.screencols)
 	buf.WriteString(status[0:statusLen])
 
-	// Define right status view, showing current line number.
-	rightStatus := fmt.Sprintf("%d/%d", config.cy+1, config.numrows)
+	// Define right status view, showing current line number and file type
+	filetypeStatus := "no ft"
+	if config.syntax != nil {
+		filetypeStatus = config.syntax.filetype
+	}
+	rightStatus := fmt.Sprintf("%s %d/%d", filetypeStatus, config.cy+1, config.numrows)
 	rightStatusLen := len(rightStatus)
 
 	// Print the rest of the status.
