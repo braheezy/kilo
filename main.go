@@ -42,20 +42,23 @@ const (
 const RED = 31
 const BLUE = 34
 const MAGENTA = 35
+const CYAN = 36
 const WHITE = 37
 const DEFAULT = 39
 
 const (
 	HL_NORMAL uint8 = iota
+	HL_COMMENT
 	HL_STRING
 	HL_NUMBER
 	HL_MATCH
 )
 
 var syntaxColors = map[uint8]int{
-	HL_NUMBER: RED,
-	HL_MATCH:  BLUE,
-	HL_STRING: MAGENTA,
+	HL_NUMBER:  RED,
+	HL_MATCH:   BLUE,
+	HL_STRING:  MAGENTA,
+	HL_COMMENT: CYAN,
 }
 
 const ESC = '\x1b' // 27
@@ -92,8 +95,10 @@ const (
 type editorSyntax struct {
 	// The current file type
 	filetype string
-	// Patterns used to detect file types
-	supportedFileTypePatterns []string
+	// The file extensions associated to a file type
+	associatedFileTypes []string
+	// The format for single comment for a file type
+	singleCommentStart string
 	// Bit field to control highlighting rules
 	flags int
 }
@@ -165,9 +170,10 @@ var GO_HL_extensions = []string{".go"}
 
 var highlightDB = []editorSyntax{
 	{
-		"go",
-		GO_HL_extensions,
-		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS,
+		filetype:            "go",
+		associatedFileTypes: GO_HL_extensions,
+		singleCommentStart:  "//",
+		flags:               HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS,
 	},
 }
 
@@ -408,11 +414,26 @@ func editorUpdateSyntax(row *editorRow) {
 	// Track is we are in a string
 	var inStringChar rune
 
+	singleCommentStartLen := len(config.syntax.singleCommentStart)
+
+	// Apply highlight rules in priority-order
 	for i := 0; i < row.RLen(); i++ {
 		char := row.render[i]
 		prevCharHighlight := HL_NORMAL
 		if i > 0 {
 			prevCharHighlight = row.highlights[i-1]
+		}
+
+		// If the row starts with the single comment identifier,
+		// set the rest of the row highlight accordingly
+		if singleCommentStartLen > 0 && inStringChar == 0 {
+			offset := i + singleCommentStartLen
+			if offset < row.RLen() && config.syntax.singleCommentStart == string(row.render[i:offset]) {
+				for j := i; j < row.RLen(); j++ {
+					row.highlights[j] = HL_COMMENT
+				}
+				break
+			}
 		}
 
 		if config.syntax.flags&HL_HIGHLIGHT_STRINGS > 0 {
@@ -458,7 +479,7 @@ func editorSelectSyntaxHighlight() {
 
 	_, fileExt, foundFileExt := strings.Cut(config.filename, ".")
 	for _, supportedSyntax := range highlightDB {
-		for _, fileType := range supportedSyntax.supportedFileTypePatterns {
+		for _, fileType := range supportedSyntax.associatedFileTypes {
 			isExtPattern := fileType[0] == '.'
 			if isExtPattern && foundFileExt && "."+fileExt == fileType ||
 				(!isExtPattern && strings.Contains(config.filename, fileType)) {
