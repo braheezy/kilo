@@ -14,5 +14,7 @@ count:
 
 debug:
 	@echo "Launching delv debug session. Run the VS Code 'Connect to server' debug configuration."
-	@cp -f main.go foo.txt
-	@dlv debug --headless --listen 127.0.0.1:42807 -- foo.txt
+	@mkdir -p debug
+	@cp -f main.go debug/foo.go
+	@dlv debug --headless --listen 127.0.0.1:42807 -- debug/foo.go
+	@rm -r debug
