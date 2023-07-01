@@ -41,11 +41,13 @@ const (
 
 const RED = 31
 const BLUE = 34
+const MAGENTA = 35
 const WHITE = 37
 const DEFAULT = 39
 
 const (
 	HL_NORMAL uint8 = iota
+	HL_STRING
 	HL_NUMBER
 	HL_MATCH
 )
@@ -53,6 +55,7 @@ const (
 var syntaxColors = map[uint8]int{
 	HL_NUMBER: RED,
 	HL_MATCH:  BLUE,
+	HL_STRING: MAGENTA,
 }
 
 const ESC = '\x1b' // 27
@@ -78,6 +81,7 @@ func MAX(a, b int) int {
 
 const (
 	HL_HIGHLIGHT_NUMBERS = 1 << iota
+	HL_HIGHLIGHT_STRINGS
 )
 
 // ==========================================
@@ -163,7 +167,7 @@ var highlightDB = []editorSyntax{
 	{
 		"go",
 		GO_HL_extensions,
-		HL_HIGHLIGHT_NUMBERS,
+		HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS,
 	},
 }
 
@@ -401,11 +405,36 @@ func editorUpdateSyntax(row *editorRow) {
 
 	// For smarter highlight behavior, track separators in the row
 	prevCharWasSeparator := true
+	// Track is we are in a string
+	var inStringChar rune
 
-	for i, char := range row.render {
+	for i := 0; i < row.RLen(); i++ {
+		char := row.render[i]
 		prevCharHighlight := HL_NORMAL
 		if i > 0 {
 			prevCharHighlight = row.highlights[i-1]
+		}
+
+		if config.syntax.flags&HL_HIGHLIGHT_STRINGS > 0 {
+			if inStringChar > 0 {
+				row.highlights[i] = HL_STRING
+				if char == '\\' && i+1 < row.RLen() {
+					row.highlights[i+1] = HL_STRING
+					i++
+					continue
+				}
+				if char == inStringChar {
+					inStringChar = 0
+				}
+				prevCharWasSeparator = true
+				continue
+			} else {
+				if char == '"' || char == '\'' {
+					inStringChar = char
+					row.highlights[i] = HL_STRING
+					continue
+				}
+			}
 		}
 
 		if config.syntax.flags&HL_HIGHLIGHT_NUMBERS > 0 {
