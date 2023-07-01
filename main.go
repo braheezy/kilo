@@ -347,6 +347,10 @@ func getWindowSize() (row int, col int) {
 // ========= Syntax Highlighting ============
 // ==========================================
 
+func isSeparator(char rune) bool {
+	return unicode.IsSpace(char) || char == '\u0000' || strings.ContainsRune(`"',.()+-/*=~%<>[];`, char)
+}
+
 func editorSyntaxToColor(syntax uint8) int {
 	if color, ok := syntaxColors[syntax]; ok {
 		return color
@@ -358,11 +362,20 @@ func editorSyntaxToColor(syntax uint8) int {
 func editorUpdateSyntax(row *editorRow) {
 	row.highlights = make([]uint8, len(row.render))
 
+	prevCharWasSeparator := true
+
 	for i, char := range row.render {
-		if unicode.IsDigit(char) {
+		prevCharHighlight := HL_NORMAL
+		if i > 0 {
+			prevCharHighlight = row.highlights[i-1]
+		}
+
+		if (unicode.IsDigit(char) && (prevCharWasSeparator || prevCharHighlight == HL_NUMBER)) ||
+			(char == '.' && prevCharHighlight == HL_NUMBER) {
 			row.highlights[i] = HL_NUMBER
+			prevCharWasSeparator = false
 		} else {
-			row.highlights[i] = HL_NORMAL
+			prevCharWasSeparator = isSeparator(char)
 		}
 	}
 }
