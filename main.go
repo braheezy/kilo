@@ -1064,7 +1064,22 @@ func editorDrawRows(buf *strings.Builder) {
 				truncatedRow := rowRender[config.colOffset:rowSize]
 				highlights := config.rows[fileRow].highlights
 				for i, char := range truncatedRow {
-					if highlights[i] == HL_NORMAL {
+					// Friendly print control characters
+					// Avoiding control code 0 because that seems to be at every new line
+					// and we don't need to show that.
+					if char > 0 && unicode.IsControl(char) {
+						symbol := "?"
+						if char <= 26 {
+							symbol = string('@' + char)
+						}
+						// Invert color when printing control characters.
+						buf.WriteString("\x1b[7m")
+						buf.WriteString(symbol)
+						buf.WriteString("\x1b[m")
+						if currentColor != DEFAULT {
+							buf.WriteString(fmt.Sprintf("\x1b[%dm", currentColor))
+						}
+					} else if highlights[i] == HL_NORMAL {
 						if currentColor != DEFAULT {
 							buf.WriteString(fmt.Sprintf("\x1b[%dm", DEFAULT))
 							currentColor = DEFAULT
