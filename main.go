@@ -40,6 +40,8 @@ const (
 )
 
 const RED = 31
+const GREEN = 32
+const YELLOW = 33
 const BLUE = 34
 const MAGENTA = 35
 const CYAN = 36
@@ -52,13 +54,17 @@ const (
 	HL_STRING
 	HL_NUMBER
 	HL_MATCH
+	HL_KEYWORD1
+	HL_KEYWORD2
 )
 
 var syntaxColors = map[uint8]int{
-	HL_NUMBER:  RED,
-	HL_MATCH:   BLUE,
-	HL_STRING:  MAGENTA,
-	HL_COMMENT: CYAN,
+	HL_NUMBER:   RED,
+	HL_MATCH:    BLUE,
+	HL_STRING:   MAGENTA,
+	HL_COMMENT:  CYAN,
+	HL_KEYWORD1: YELLOW,
+	HL_KEYWORD2: GREEN,
 }
 
 const ESC = '\x1b' // 27
@@ -99,6 +105,8 @@ type editorSyntax struct {
 	associatedFileTypes []string
 	// The format for single comment for a file type
 	singleCommentStart string
+	// The collection of known keywords for a file type
+	keywords map[uint8][]string
 	// Bit field to control highlighting rules
 	flags int
 }
@@ -164,15 +172,30 @@ func (e editorRow) RLen() int {
 // ==========================================
 // ============== File Types ================
 // ==========================================
-// File type support lies here.
-// Define supported extensions.
 var GO_HL_extensions = []string{".go"}
+var GO_HL_keywords = map[uint8][]string{
+	HL_KEYWORD1: {"break", "default", "func", "interface", "select",
+		"case", "defer", "go", "map", "struct",
+		"chan", "else", "goto", "package", "switch",
+		"const", "fallthrough", "if", "range", "type",
+		"continue", "for", "import", "return", "var"},
+	HL_KEYWORD2: {
+		"any", "bool", "byte", "comparable",
+		"complex64", "complex128", "error", "float32", "float64",
+		"int8", "int16", "int32", "int64", "rune", "string", "int",
+		"uint8", "uint16", "uint32", "uint64", "uintptr", "uint",
+		"true", "false", "iota",
+		"nil",
+		"append", "cap", "close", "complex", "copy", "delete", "imag", "len",
+		"make", "new", "panic", "print", "println", "real", "recover"},
+}
 
 var highlightDB = []editorSyntax{
 	{
 		filetype:            "go",
 		associatedFileTypes: GO_HL_extensions,
 		singleCommentStart:  "//",
+		keywords:            GO_HL_keywords,
 		flags:               HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS,
 	},
 }
@@ -463,10 +486,27 @@ func editorUpdateSyntax(row *editorRow) {
 				(char == '.' && prevCharHighlight == HL_NUMBER) {
 				row.highlights[i] = HL_NUMBER
 				prevCharWasSeparator = false
-			} else {
-				prevCharWasSeparator = isSeparator(char)
 			}
 		}
+
+		for keywordClass, keywords := range config.syntax.keywords {
+			for _, keyword := range keywords {
+				offset := i + len(keyword)
+				if offset < row.RLen() && keyword == string(row.render[i:offset]) {
+					hlColor := HL_KEYWORD1
+					if keywordClass == HL_KEYWORD2 {
+						hlColor = HL_KEYWORD2
+					}
+					for j := i; j < offset; j++ {
+						row.highlights[j] = hlColor
+					}
+					i += len(keyword)
+					break
+				}
+			}
+		}
+
+		prevCharWasSeparator = isSeparator(char)
 	}
 }
 
