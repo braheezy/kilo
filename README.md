@@ -1,6 +1,10 @@
 # kilo
 A Go implementation of the [kilo](https://viewsourcecode.org/snaptoken/kilo/index.html) text editor.
 
+Output of `kilo main.go`:
+
+![](./kilo.png)
+
 ## Usage
 Ensure [Go](https://go.dev/doc/install) is installed.
 
