@@ -24,8 +24,10 @@ const KILO_TAB_STOP = 8
 const KILO_MESSAGE_TIMEOUT = 5
 const KILO_QUIT_TIMES = 3
 
-// Define keys we care about and give them really high numbers
-// to avoid conflict with existing keys.
+/*
+Define keys we care about and give them really high numbers
+to avoid conflict with existing keys.
+*/
 const (
 	BACKSPACE  = 127
 	ARROW_LEFT = 1000 + iota
@@ -51,6 +53,7 @@ const DEFAULT = 39
 const (
 	HL_NORMAL uint8 = iota
 	HL_COMMENT
+	HL_MLCOMMENT
 	HL_STRING
 	HL_NUMBER
 	HL_MATCH
@@ -59,12 +62,13 @@ const (
 )
 
 var syntaxColors = map[uint8]int{
-	HL_NUMBER:   RED,
-	HL_MATCH:    BLUE,
-	HL_STRING:   MAGENTA,
-	HL_COMMENT:  CYAN,
-	HL_KEYWORD1: YELLOW,
-	HL_KEYWORD2: GREEN,
+	HL_NUMBER:    RED,
+	HL_MATCH:     BLUE,
+	HL_STRING:    MAGENTA,
+	HL_COMMENT:   CYAN,
+	HL_MLCOMMENT: CYAN,
+	HL_KEYWORD1:  YELLOW,
+	HL_KEYWORD2:  GREEN,
 }
 
 const ESC = '\x1b' // 27
@@ -103,8 +107,12 @@ type editorSyntax struct {
 	filetype string
 	// The file extensions associated to a file type
 	associatedFileTypes []string
-	// The format for single comment for a file type
+	// The start format for single comment for a file type
 	singleCommentStart string
+	// The start format for multi comment for a file type
+	multiCommentStart string
+	// The end format for multi comment for a file type
+	multiCommentEnd string
 	// The collection of known keywords for a file type
 	keywords map[uint8][]string
 	// Bit field to control highlighting rules
@@ -147,6 +155,8 @@ var mainBuffer strings.Builder
 
 // Represents a row of text in the editor.
 type editorRow struct {
+	// The row's place in the overall editor
+	id int
 	// The literal text of the row.
 	content string
 	// Our render of the content, with tabs expanded.
@@ -154,6 +164,8 @@ type editorRow struct {
 	// The syntax-highlight properties for the row.
 	// Each position corresponds to a character in the render string.
 	highlights []uint8
+	// If True, this row is part of an open, multi-line comment
+	isOpenComment bool
 }
 
 // Track how many times Quit has been attempted
@@ -195,6 +207,8 @@ var highlightDB = []editorSyntax{
 		filetype:            "go",
 		associatedFileTypes: GO_HL_extensions,
 		singleCommentStart:  "//",
+		multiCommentStart:   "/*",
+		multiCommentEnd:     "*/",
 		keywords:            GO_HL_keywords,
 		flags:               HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS,
 	},
@@ -434,10 +448,14 @@ func editorUpdateSyntax(row *editorRow) {
 
 	// For smarter highlight behavior, track separators in the row
 	prevCharWasSeparator := true
-	// Track is we are in a string
+	// Track if we are in a string
 	var inStringChar rune
+	// Tracks if we are in comment
+	inComment := row.id > 0 && config.rows[row.id-1].isOpenComment
 
 	singleCommentStartLen := len(config.syntax.singleCommentStart)
+	multiCommentStartLen := len(config.syntax.multiCommentStart)
+	multiCommentEndLen := len(config.syntax.multiCommentEnd)
 
 	// Apply highlight rules in priority-order
 	for i := 0; i < row.RLen(); i++ {
@@ -449,13 +467,38 @@ func editorUpdateSyntax(row *editorRow) {
 
 		// If the row starts with the single comment identifier,
 		// set the rest of the row highlight accordingly
-		if singleCommentStartLen > 0 && inStringChar == 0 {
+		if singleCommentStartLen > 0 && inStringChar == 0 && !inComment {
 			offset := i + singleCommentStartLen
 			if offset < row.RLen() && config.syntax.singleCommentStart == string(row.render[i:offset]) {
 				for j := i; j < row.RLen(); j++ {
 					row.highlights[j] = HL_COMMENT
 				}
 				break
+			}
+		}
+
+		if multiCommentStartLen > 0 && multiCommentEndLen > 0 && inStringChar == 0 {
+			if inComment {
+				row.highlights[i] = HL_MLCOMMENT
+				offset := i + multiCommentEndLen
+				if offset < row.RLen() && config.syntax.multiCommentEnd == string(row.render[i:offset]) {
+					for j := i; j < multiCommentEndLen; j++ {
+						row.highlights[j] = HL_MLCOMMENT
+					}
+					i += multiCommentEndLen
+					inComment = false
+					prevCharWasSeparator = false
+					continue
+				} else {
+					continue
+				}
+			} else if offset := i + multiCommentStartLen; offset < row.RLen() && config.syntax.multiCommentStart == string(row.render[i:offset]) {
+				for j := i; j < multiCommentStartLen; j++ {
+					row.highlights[j] = HL_MLCOMMENT
+				}
+				i += multiCommentStartLen
+				inComment = true
+				continue
 			}
 		}
 
@@ -507,6 +550,19 @@ func editorUpdateSyntax(row *editorRow) {
 		}
 
 		prevCharWasSeparator = isSeparator(char)
+	}
+
+	// Record if the comment status changed
+	changed := row.isOpenComment != inComment
+	// Update row's comment status
+	row.isOpenComment = inComment
+
+	// A single line edit could toggle a multiline comment change, so we'll
+	// need to redo all the syntax in rows after the current one.
+	// But, we only need to do that when comment status changes, otherwise
+	// we did it on the previous paint loop.
+	if changed && row.id+1 < config.numrows {
+		editorUpdateSyntax(&config.rows[row.id+1])
 	}
 }
 
@@ -615,6 +671,12 @@ func editorInsertRow(at int, rowContent string) {
 
 	config.rows = slices.Insert(config.rows, at, editorRow{content: rowContent})
 
+	for i := at; i < config.numrows-1; i++ {
+		config.rows[i].id++
+	}
+
+	config.rows[at].id = at
+
 	editorUpdateRow(&config.rows[config.numrows])
 	config.numrows++
 	config.dirty = true
@@ -659,6 +721,11 @@ func editorDelRow(at int) {
 		return
 	}
 	slices.Delete(config.rows, at, at+1)
+
+	for ; at < config.numrows-1; at++ {
+		config.rows[at].id--
+	}
+
 	config.numrows--
 	config.dirty = true
 }
