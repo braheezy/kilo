@@ -19,7 +19,7 @@ import (
 // =============== Defines =================
 // ==========================================
 
-const KILO_VERSION = "0.0.1"
+const KILO_VERSION = "0.1.0"
 const KILO_TAB_STOP = 8
 const KILO_MESSAGE_TIMEOUT = 5
 const KILO_QUIT_TIMES = 3
